@@ -1,0 +1,171 @@
+{
+  "phases": [
+    {
+      "phase": "native-before",
+      "units": [
+        201
+      ],
+      "synced_buildings": [
+        2026
+      ],
+      "total_buildings_min": 9095,
+      "total_buildings_max": 9117,
+      "traffic_seconds": 30.0,
+      "udp_bytes": 1139910,
+      "peak_100ms_udp_kbps": 4656.16,
+      "peak_1s_udp_kbps": 686.896,
+      "view_widths": [
+        339.198486328125
+      ],
+      "view_x_range": [
+        3057.26220703125,
+        3057.26220703125
+      ],
+      "modes": [
+        "native"
+      ],
+      "spawner_always_disabled": true,
+      "cpu_cores": 0.44428355535689534,
+      "host_min_available_mib": 159.81640625,
+      "max_selection": 0,
+      "bucket_rounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "udp_out_kbps": 303.976,
+      "udp_reduction_vs_bracketed_native_pct": -0.05569328928778372
+    },
+    {
+      "phase": "C-stagger",
+      "units": [
+        201
+      ],
+      "synced_buildings": [
+        2026
+      ],
+      "total_buildings_min": 9088,
+      "total_buildings_max": 9114,
+      "traffic_seconds": 30.0,
+      "udp_bytes": 539402,
+      "peak_100ms_udp_kbps": 737.12,
+      "peak_1s_udp_kbps": 186.128,
+      "view_widths": [
+        339.198486328125
+      ],
+      "view_x_range": [
+        3057.26220703125,
+        3057.26220703125
+      ],
+      "modes": [
+        "aoi"
+      ],
+      "spawner_always_disabled": true,
+      "cpu_cores": 0.4877825366724494,
+      "host_min_available_mib": 148.84375,
+      "max_selection": 207,
+      "bucket_rounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "udp_out_kbps": 143.84053333333333,
+      "udp_reduction_vs_bracketed_native_pct": 52.6539454240875
+    },
+    {
+      "phase": "C-stagger-buckets",
+      "units": [
+        201
+      ],
+      "synced_buildings": [
+        2026
+      ],
+      "total_buildings_min": 9088,
+      "total_buildings_max": 9118,
+      "traffic_seconds": 30.0,
+      "udp_bytes": 557973,
+      "peak_100ms_udp_kbps": 488.72,
+      "peak_1s_udp_kbps": 210.784,
+      "view_widths": [
+        339.198486328125
+      ],
+      "view_x_range": [
+        3057.26220703125,
+        3057.26220703125
+      ],
+      "modes": [
+        "aoi"
+      ],
+      "spawner_always_disabled": true,
+      "cpu_cores": 0.45539834765108544,
+      "host_min_available_mib": 139.08203125,
+      "max_selection": 78,
+      "bucket_rounds": [
+        41,
+        41,
+        41,
+        40
+      ],
+      "udp_out_kbps": 148.7928,
+      "udp_reduction_vs_bracketed_native_pct": 51.02387438332519
+    },
+    {
+      "phase": "native-after",
+      "units": [
+        201
+      ],
+      "synced_buildings": [
+        2026
+      ],
+      "total_buildings_min": 9087,
+      "total_buildings_max": 9118,
+      "traffic_seconds": 30.0,
+      "udp_bytes": 1138641,
+      "peak_100ms_udp_kbps": 4637.36,
+      "peak_1s_udp_kbps": 681.88,
+      "view_widths": [
+        339.198486328125
+      ],
+      "view_x_range": [
+        3057.26220703125,
+        3057.26220703125
+      ],
+      "modes": [
+        "native"
+      ],
+      "spawner_always_disabled": true,
+      "cpu_cores": 0.46532379300309007,
+      "host_min_available_mib": 159.7734375,
+      "max_selection": 0,
+      "bucket_rounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "udp_out_kbps": 303.63759999999996,
+      "udp_reduction_vs_bracketed_native_pct": 0.05569328928781703
+    }
+  ],
+  "native_weighted_udp_kbps": 303.8068,
+  "native_before_after_drift_pct": -0.11132457825618891,
+  "attempts": [
+    {
+      "attempt": 1,
+      "valid": true,
+      "units": 201
+    }
+  ],
+  "restored": {
+    "nativeListener": true,
+    "enabled": false,
+    "stagger": false,
+    "farBuckets": false,
+    "budget": 8,
+    "diagnostics": false,
+    "error": null
+  },
+  "raw": "/var/log/mlogent-world-traffic/stable-map-trial-20261123-121400.jsonl"
+}

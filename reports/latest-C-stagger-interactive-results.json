@@ -1,0 +1,90 @@
+{
+  "phases": [
+    {
+      "phase": "camera",
+      "seconds": 39.5,
+      "units": [
+        162
+      ],
+      "modes": [
+        "aoi"
+      ],
+      "building_modes": [
+        "aoi"
+      ],
+      "view_changes": 13,
+      "traffic_seconds": 30.0,
+      "mean_udp_kbps": 118.83,
+      "peak_100ms_udp_kbps": 726.08,
+      "max_trace_added_ms": 16.377646,
+      "min_available_mib": 194.25,
+      "max_jvm_swap_mib": 49.65,
+      "all_enabled": true,
+      "players": [
+        1
+      ]
+    },
+    {
+      "phase": "full-view",
+      "seconds": 39.35,
+      "units": [
+        162
+      ],
+      "modes": [
+        "aoi",
+        "native-full-view"
+      ],
+      "building_modes": [
+        "aoi"
+      ],
+      "view_changes": 9,
+      "traffic_seconds": 30.0,
+      "mean_udp_kbps": 232.0,
+      "peak_100ms_udp_kbps": 776.8,
+      "max_trace_added_ms": 37.716518,
+      "min_available_mib": 169.01,
+      "max_jvm_swap_mib": 51.16,
+      "all_enabled": true,
+      "players": [
+        1
+      ]
+    },
+    {
+      "phase": "controlled-unit",
+      "seconds": 38.99,
+      "units": [
+        161,
+        162,
+        166,
+        167
+      ],
+      "modes": [
+        "aoi",
+        "native-full-view"
+      ],
+      "building_modes": [
+        "aoi"
+      ],
+      "view_changes": 10,
+      "traffic_seconds": 30.000999999999998,
+      "mean_udp_kbps": 151.78,
+      "peak_100ms_udp_kbps": 755.92,
+      "max_trace_added_ms": 26.215581,
+      "min_available_mib": 155.81,
+      "max_jvm_swap_mib": 51.04,
+      "all_enabled": true,
+      "players": [
+        1
+      ]
+    }
+  ],
+  "restored": {
+    "enabled": false,
+    "stagger": false,
+    "budget": 8,
+    "diagnostics": false,
+    "nativeListener": true,
+    "error": null
+  },
+  "raw": "/var/log/mlogent-world-traffic/C-stagger-interactive-20261123-114709.jsonl"
+}

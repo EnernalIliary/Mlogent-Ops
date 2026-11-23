@@ -1,0 +1,75 @@
+{
+  "phases": [
+    {
+      "phase": "C-combined-no-time-fallback",
+      "seconds": 49.54393196105957,
+      "units": [
+        150
+      ],
+      "traffic_windows": 4,
+      "traffic_seconds": 40.0,
+      "udp_out_kbps": 122.703,
+      "total_out_kbps": 123.37219999999999,
+      "max_100ms_udp_kbps": 737.84,
+      "max_1s_udp_kbps": 180.896,
+      "phase_rates": {
+        "state": 3.0679841906667527,
+        "entities": 3.0679841906667527,
+        "buildings": 3.0679841906667527
+      },
+      "avg_work_ms_per_cycle": 3.3001477434210558,
+      "max_cycle_including_warmup_ms": 41.793573,
+      "max_dispatch_including_warmup_ms": 41.793573,
+      "trace_max_added_ms": 12.26001,
+      "trace_p95_added_ms": 4.935407,
+      "trace_count": 152,
+      "trace_gc_count": 0,
+      "cpu_cores": 0.575228576752757,
+      "max_callback_gap_ms": 481,
+      "min_host_available_mib": 141.58984375,
+      "max_jvm_swap_mib": 36.328125,
+      "views": 1,
+      "error": null
+    },
+    {
+      "phase": "C-staggered-no-time-fallback",
+      "seconds": 50.45166802406311,
+      "units": [
+        150,
+        155,
+        162
+      ],
+      "traffic_windows": 4,
+      "traffic_seconds": 40.002,
+      "udp_out_kbps": 133.4723263836808,
+      "total_out_kbps": 134.18429078546075,
+      "max_100ms_udp_kbps": 636.0,
+      "max_1s_udp_kbps": 162.584,
+      "phase_rates": {
+        "state": 3.25063583471174,
+        "entities": 3.25063583471174,
+        "buildings": 3.25063583471174
+      },
+      "avg_work_ms_per_cycle": 3.615523042682927,
+      "max_cycle_including_warmup_ms": 15.145956,
+      "max_dispatch_including_warmup_ms": 12.23469,
+      "trace_max_added_ms": 12.559332999999999,
+      "trace_p95_added_ms": 2.465345,
+      "trace_count": 478,
+      "trace_gc_count": 3,
+      "cpu_cores": 0.5560758125979869,
+      "max_callback_gap_ms": 326,
+      "min_host_available_mib": 159.3984375,
+      "max_jvm_swap_mib": 36.3984375,
+      "views": 1,
+      "error": null
+    }
+  ],
+  "restored": {
+    "cleaned": true,
+    "enabled": false,
+    "stagger": false,
+    "budget": 8
+  },
+  "raw": "/var/log/mlogent-world-traffic/stagger-trial-20261123-114214.jsonl"
+}

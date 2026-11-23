@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlogent-ops"
+version = "0.1.0"
+description = "Deployment, synchronization policies and incident-only telemetry for Mlogent servers"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+probes = ["psutil>=5.9"]
+
+[project.scripts]
+mlogent-ops-traffic = "mlogent_ops.world_traffic:main"
+mlogent-ops-pressure = "mlogent_ops.world_interest_diagnostics:main"
+mlogent-ops-snapshot-probe = "mlogent_ops.world_snapshot_diagnostics:main"
+
+[tool.setuptools.packages.find]
+include = ["mlogent_ops*"]

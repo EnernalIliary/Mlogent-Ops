@@ -1,0 +1,90 @@
+{
+  "phases": [
+    {
+      "phase": "C-stagger-concentrated-far",
+      "seconds": 50.44598698616028,
+      "units": [
+        180
+      ],
+      "traffic_windows": 5,
+      "traffic_seconds": 50.0,
+      "udp_out_kbps": 144.40272,
+      "total_out_kbps": 145.11312,
+      "max_100ms_udp_kbps": 781.76,
+      "max_1s_udp_kbps": 197.168,
+      "phase_rates": {
+        "state": 3.251001909130908,
+        "entities": 3.2708250915036574,
+        "buildings": 3.2708250915036574
+      },
+      "avg_work_ms_per_cycle": 3.297470539393937,
+      "max_cycle_including_warmup_ms": 8.009046,
+      "max_dispatch_including_warmup_ms": 7.055966,
+      "trace_max_added_ms": 7.064511,
+      "trace_p95_added_ms": 2.299167,
+      "trace_count": 477,
+      "trace_gc_count": 2,
+      "cpu_cores": 0.5248317753806134,
+      "max_callback_gap_ms": 411,
+      "min_host_available_mib": 154.6328125,
+      "max_jvm_swap_mib": 49.43359375,
+      "views": 25,
+      "error": null,
+      "far_buckets_enabled": false,
+      "max_selected_entities": 188,
+      "bucket_rounds": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "C-stagger-four-far-buckets",
+      "seconds": 50.71962904930115,
+      "units": [
+        180
+      ],
+      "traffic_windows": 4,
+      "traffic_seconds": 40.001,
+      "udp_out_kbps": 146.45113872153198,
+      "total_out_kbps": 147.12312192195196,
+      "max_100ms_udp_kbps": 529.44,
+      "max_1s_udp_kbps": 189.0,
+      "phase_rates": {
+        "state": 3.2728945994191427,
+        "entities": 3.2728945994191427,
+        "buildings": 3.2728945994191427
+      },
+      "avg_work_ms_per_cycle": 4.99734840361446,
+      "max_cycle_including_warmup_ms": 240.07796900000002,
+      "max_dispatch_including_warmup_ms": 238.974216,
+      "trace_max_added_ms": 239.060427,
+      "trace_p95_added_ms": 2.294462,
+      "trace_count": 481,
+      "trace_gc_count": 2,
+      "cpu_cores": 0.5510641365157749,
+      "max_callback_gap_ms": 312,
+      "min_host_available_mib": 178.9453125,
+      "max_jvm_swap_mib": 46.984375,
+      "views": 28,
+      "error": null,
+      "far_buckets_enabled": true,
+      "max_selected_entities": 77,
+      "bucket_rounds": [
+        59,
+        58,
+        58,
+        58
+      ]
+    }
+  ],
+  "restored": {
+    "cleaned": true,
+    "enabled": false,
+    "stagger": false,
+    "budget": 8,
+    "farBuckets": false
+  },
+  "raw": "/var/log/mlogent-world-traffic/far-bucket-trial-20261123-120046.jsonl"
+}
