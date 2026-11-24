@@ -12,6 +12,7 @@ import time
 
 from . import world_api
 from .world_traffic import classify
+from .world_resource_sampler import ResourceSampler
 
 
 def outbound_peer(packet, address, port=6567):
@@ -26,13 +27,20 @@ def outbound_peer(packet, address, port=6567):
 
 
 def feedback_worker(items):
+    sampler = ResourceSampler()
     while True:
         rates = items.get()
         try:
             hs = world_api.handshake()  # Explicit handshake never wakes the server.
+            try:
+                resources = sampler.sample(int(hs['pid']))
+            except (OSError, ValueError, KeyError, StopIteration, ZeroDivisionError):
+                resources = None
             code = ('var p=this._mcpSnapshotPolicy;'
                     'if(p&&p.adaptiveEnabled&&typeof p.adaptiveFeedback==="function")'
                     '{p.adaptiveFeedback('+json.dumps(rates)+',java.lang.System.currentTimeMillis());}'
+                    'if(p&&p.adaptiveEnabled&&typeof p.adaptiveResourceFeedback==="function")'
+                    '{p.adaptiveResourceFeedback('+json.dumps(resources)+',java.lang.System.currentTimeMillis());}'
                     'sb.append("bandwidth feedback");')
             world_api.call({'op':'js', 'code':code}, hs=hs, timeout=2)
         except (OSError, ValueError, RuntimeError, KeyError):

@@ -241,6 +241,9 @@ INSTALL_JS = r"""
    // invariants and reject distant units before crossing the JS/Java bridge
    // for additional getters; do not recalculate camera/team/owner per entity.
    if(fog&&entity.isSyncHidden(team)){hidden.add(entity.id);continue;}
+   // Controlled units have one authoritative periodic lane while the
+   // supplement is healthy. A disabled/failed supplement restores this lane.
+   if(policy.controlledEnabled&&policy.supplement&&controlled[entity.id]&&entity instanceof unitType)continue;
    if(all||!(entity instanceof unitType)||entity.id===ownId||controlled[entity.id]){selected.add(entity);continue;}
    var radius=Number(entity.hitSize)/2||0,x=entity.x;
    var near=x>=left-radius&&x<=right+radius;
@@ -531,13 +534,14 @@ INSTALL_JS = r"""
   var sendState=!buildingsOnly,sendEntities=!buildingsOnly,sendBuildings=policy.interestBuildingMode==='aoi';
   var sendFullEntities=!buildingsOnly&&policy.interestPerPlayerFullView&&policy.interestFullViewPlayers>0;
   var sendReactors=policy.interestReactorEnabled;
+  var adaptiveOpportunity=!!policy.adaptiveEnabled&&!Vars.state.rules.pvp;
   if(policy.interestStaggerEnabled){
    sendState=sendState&&policy.interestPhaseDue('state',now,interval,interval);
    sendEntities=sendEntities&&policy.interestPhaseDue('entities',now,policy.interestEntityIntervalMs||interval,interval);
    sendFullEntities=sendFullEntities&&policy.interestPhaseDue('fullEntities',now,interval,interval);
    sendBuildings=sendBuildings&&policy.interestPhaseDue('buildings',now,interval,interval);
    sendReactors=sendReactors&&policy.interestPhaseDue('reactors',now,policy.interestReactorIntervalMs,interval);
-   if(!sendState&&!sendEntities&&!sendFullEntities&&!sendBuildings&&!sendReactors)return;
+   if(!sendState&&!sendEntities&&!sendFullEntities&&!sendBuildings&&!sendReactors&&!adaptiveOpportunity)return;
   }else if(now-policy.interestLastBase<interval)return;
   // A native update may cross a due boundary. Open a send-only trace here if
   // the pre-update observer did not run; its setup is outside the work budget.
@@ -554,7 +558,7 @@ INSTALL_JS = r"""
   var buildings=policy.interestBuildings;
   if(sendReactors&&Groups.player.size()>0)policy.prepareReactors();
   var active={};
-  if(sendEntities||sendFullEntities||sendBuildings||sendReactors){
+  if(sendEntities||sendFullEntities||sendBuildings||sendReactors||adaptiveOpportunity){
   for(var j=0;j<Groups.player.size();j++){
    policy.checkBudget();
    var receiver=Groups.player.index(j),con=receiver.con;
@@ -757,7 +761,7 @@ INSTALL_JS = r"""
   resume:function(){original.resume();},resize:function(w,h){original.resize(w,h);},
   dispose:function(){original.dispose();}
  });
- if(!policy.interestWorldCallbackInstalled||!policy.interestIncrementalWorldCallbackInstalled||!policy.interestPhaseWorldCallbackInstalled||!policy.interestRelaxedWorldCallbackInstalled)Events.on(Packages.mindustry.game.EventType.WorldLoadEvent,function(){
+ if(!policy.interestWorldCallbackInstalled||!policy.interestIncrementalWorldCallbackInstalled||!policy.interestPhaseWorldCallbackInstalled||!policy.interestRelaxedWorldCallbackInstalled||!policy.interestResourceWorldCallbackInstalled)Events.on(Packages.mindustry.game.EventType.WorldLoadEvent,function(){
   var current=mcpInterestRoot._mcpSnapshotPolicy;
   if(current){
    current.interestStates={};current.interestLastBase=0;current.interestLastUpdate=0;current.interestInFullView=false;
@@ -767,6 +771,9 @@ INSTALL_JS = r"""
    current.interestBuildingEffectiveMode='pending';
    current.interestBuildingBuffer=null;
    current.adaptiveClients={};current.adaptiveFeedbackAt=0;
+   if(current.adaptiveResource)current.adaptiveResource={tier:1,at:0,high:0,healthySince:0,lastChange:0,reason:'world-changed'};
+   if(current.adaptiveFrame)current.adaptiveFrame={last:0,gaps:[]};
+   current.controlledNext=0;
    if(typeof current.resetBuildingObservation==='function')current.resetBuildingObservation();
    current.interestPhaseOrigin=null;current.interestPhaseNext=null;
    current.interestSlowCount=0;
@@ -783,6 +790,7 @@ INSTALL_JS = r"""
  policy.interestIncrementalWorldCallbackInstalled=true;
  policy.interestPhaseWorldCallbackInstalled=true;
  policy.interestRelaxedWorldCallbackInstalled=true;
+ policy.interestResourceWorldCallbackInstalled=true;
  policy.restoreOriginal=function(){
   var currentListeners=Core.app.getListeners();
   var currentSlot=currentListeners.indexOf(policy.interestWrapper,true);

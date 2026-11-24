@@ -113,6 +113,7 @@ buildingObservationEnabled:!!p.buildingObservationEnabled,buildingDedupEnabled:!
 enemyBuildingsInViewOnly:!!p.interestEnemyBuildingsInViewOnly,outsideBuildingSkips:p.interestBuildingOutsideSkipped,
 adaptiveEnabled:!!p.adaptiveEnabled,adaptiveTargetBps:p.adaptiveTargetBps,
 adaptiveFeedbackAt:p.adaptiveFeedbackAt,adaptiveClients:p.adaptiveClients||{},
+adaptiveResource:p.adaptiveResource||null,controlledEffectiveInterval:p.controlledEffectiveInterval,
 afkEnabled:!!p.afkEnabled,afkError:p.afkError||null,
 polyEnabled:!!p.polyEnabled,polyError:p.polyError||null,polyStats:p.polyStats||null,
 afkClients:(function(){var a={};for(var k in p.afkStates){var s=p.afkStates[k];a[k]={mode:s.mode,lastActivity:s.lastActivity,reason:s.reason};}return a;})(),

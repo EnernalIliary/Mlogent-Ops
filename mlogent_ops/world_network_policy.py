@@ -54,12 +54,22 @@ CORE_INSTALL_JS = r"""
    }
    return visible;
   };
- if(!policy.supplement||policy.controlledVersion!==3){
-  policy.controlledVersion=3;
+ if(!policy.supplement||policy.controlledVersion!==4){
+  policy.controlledVersion=4;
   policy.supplement=function(){
    if(!policy.controlledEnabled||!Vars.state.isGame()||Vars.state.isPaused())return;
+   // Native fallback already sends these entities. Never add a second lane.
+   if(Vars.state.rules.pvp||(policy.interestInstalled!==undefined&&!policy.interestEnabled)||policy.interestUnitMode==='native-full-view')return;
    var now=java.lang.System.currentTimeMillis();
-   if(now-policy.lastControlled<policy.controlledInterval)return;
+   var effective=policy.controlledInterval;
+   if(typeof policy.adaptiveControlledInterval==='function')effective=policy.adaptiveControlledInterval(now);
+   policy.controlledEffectiveInterval=effective;
+   if(!policy.controlledNext||policy.controlledScheduleInterval!==effective){
+    policy.controlledNext=policy.lastControlled?policy.lastControlled+effective:now;
+    policy.controlledScheduleInterval=effective;
+   }
+   if(now<policy.controlledNext)return;
+   policy.controlledNext+=effective*(Math.floor(Math.max(0,now-policy.controlledNext)/effective)+1);
    policy.lastControlled=now;
    try{
     var units=new Packages.arc.struct.Seq();

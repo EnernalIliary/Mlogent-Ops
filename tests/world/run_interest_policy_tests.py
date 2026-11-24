@@ -204,6 +204,24 @@ assert.equal(deliveries.filter(x=>x.key===7).length-count,5);
         result=subprocess.run(['node','-e',harness],input=json.dumps(INSTALL_JS),text=True,capture_output=True,timeout=15)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
+    def test_resource_boost_has_real_100ms_dispatch_opportunities(self):
+        from mlogent_ops.world_adaptive_policy import INSTALL_JS as ADAPTIVE_JS
+        harness=HARNESS.split('vm.createContext(ctx);')[0]+r'''
+receiver.con.address='a';let deliveries=[];
+original.writeCustomEntitySnapshot=(r,s)=>deliveries.push(now);
+vm.createContext(ctx);vm.runInContext(source,ctx);
+policy.interestStaggerEnabled=true;policy.interestEntityIntervalMs=200;
+ctx.Packages.mindustry.net.Administration.Config.snapshotInterval.num=()=>300;
+policy.adaptiveEnabled=true;policy.adaptiveFeedback({a:50000},now);
+policy.adaptiveResource.tier=0;policy.adaptiveResource.at=now;
+const start=now;for(let t=0;t<1000;t+=10){now=start+t;policy.interestUpdate();}
+assert.equal(deliveries.length,10);
+for(let i=1;i<deliveries.length;i++)assert.equal(deliveries[i]-deliveries[i-1],100);
+assert.equal(policy.interestEnabled,true);
+'''
+        result=subprocess.run(['node','-e',harness],input=json.dumps(INSTALL_JS+ADAPTIVE_JS),text=True,capture_output=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
     def test_adaptive_receivers_dispatch_independently_and_stale_restores(self):
         from mlogent_ops.world_adaptive_policy import INSTALL_JS as ADAPTIVE_JS
         harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
@@ -224,6 +242,7 @@ assert.equal(policy.interestEnabled,true);
 // Monitoring outage restores base cadence rather than extending indefinitely.
 policy.adaptiveFeedbackAt=now-11000;assert.equal(policy.adaptiveCadence(receiver,now,false),null);
 events[0]();assert.equal(Object.keys(policy.adaptiveClients).length,0);
+assert.equal(policy.adaptiveResource.tier,1);assert.equal(policy.adaptiveResource.at,0);
 """
         result = subprocess.run(['node','-e',harness],input=json.dumps(INSTALL_JS+ADAPTIVE_JS),
                                 capture_output=True,text=True,timeout=15)
@@ -494,6 +513,15 @@ for(let bucket=0;bucket<6;bucket++){
  const chosen=policy.selectEntities(receiver,policy.view(receiver),false,ctx.Groups.sync,new IntSeq(),bucket);
  assert.ok(chosen.a.includes(controlled));
 }
+// With a working supplement, this same unit must not be duplicated by primary packets.
+policy.controlledEnabled=true;policy.supplement=function(){};
+for(let bucket=0;bucket<6;bucket++){
+ const chosen=policy.selectEntities(receiver,policy.view(receiver),false,ctx.Groups.sync,new IntSeq(),bucket);
+ assert.ok(!chosen.a.includes(controlled));assert.ok(!chosen.a.includes(mine));
+ assert.ok(chosen.a.includes(near));
+}
+policy.controlledEnabled=false;
+assert.ok(policy.selectEntities(receiver,policy.view(receiver),false,ctx.Groups.sync,new IntSeq(),0).a.includes(controlled));
 controlled.hidden=true;const hiddenIds=new IntSeq();
 assert.ok(!policy.selectEntities(receiver,policy.view(receiver),false,ctx.Groups.sync,hiddenIds,0).a.includes(controlled));
 assert.ok(hiddenIds.a.includes(controlled.id));

@@ -84,6 +84,17 @@ owners[0].unit=()=>a;owners[1].unit=()=>b;owners[2].unit=()=>a;
 p.controlledEnabled=true;p.afkSupplementDue=receiver=>receiver.name!=='a';
 sent=[];now+=100;p.supplement();assert.ok(sent.length>0);assert.ok(sent.every(x=>x[0]!=='a'));
 delete p.afkSupplementDue;
+p.interestInstalled=true;p.interestEnabled=false;
+sent=[];now+=300;p.supplement();assert.equal(sent.length,0); // native fallback owns every entity
+p.interestEnabled=true;ctx.Vars.state.rules.pvp=true;
+now+=300;p.supplement();assert.equal(sent.length,0); // PvP stays on native lane
+ctx.Vars.state.rules.pvp=false;p.interestEnabled=true;
+p.adaptiveControlledInterval=()=>150;sent=[];
+now+=150;p.supplement();assert.equal(sent.length,3);
+now+=100;p.supplement();assert.equal(sent.length,3);
+now+=50;p.supplement();assert.equal(sent.length,6);
+assert.equal(p.controlledEffectiveInterval,150);
+delete p.adaptiveControlledInterval;
 p.interestEnabled=false;
 assert.deepEqual(p.visibleUnits(owners[0],check).items,[a,b]);
 // A missing/partially loaded policy must never escape an update callback.

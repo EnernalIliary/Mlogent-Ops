@@ -11,6 +11,37 @@ from mlogent_ops.world_bandwidth_controller import outbound_peer
 
 
 class AdaptivePolicyTests(unittest.TestCase):
+    def test_resource_headroom_pressure_hysteresis_and_stale_budget(self):
+        script=r'''
+const vm=require('node:vm'),assert=require('node:assert/strict');
+const player={con:{address:'a',hashCode:()=>1}};
+const p={},ctx={_mcpSnapshotPolicy:p,Groups:{player:{size:()=>1,index:()=>player}},Vars:{state:{rules:{pvp:false}}}};
+vm.createContext(ctx);vm.runInContext(JSON.parse(require('node:fs').readFileSync(0,'utf8')),ctx);
+p.adaptiveEnabled=true;let now=100000;
+const healthy={cpuRatio:.3,hostCpuRatio:.4,availableKB:400000,cpuBudgetCores:1};
+function feed(sample,max=17){p.adaptiveFrame.gaps=Array(120).fill(17);p.adaptiveFrame.gaps.push(max);p.adaptiveFeedback({a:50000},now);p.adaptiveResourceFeedback(sample,now);now+=2000;}
+assert.equal(p.adaptiveResourceTier(now),1);
+for(let i=0;i<15;i++)feed(healthy);assert.equal(p.adaptiveResource.tier,1);
+for(let i=0;i<3;i++)feed(healthy);assert.equal(p.adaptiveResource.tier,0);
+assert.equal(p.adaptiveCadence(player,now,false).interval,100);
+assert.equal(p.adaptiveControlledInterval(now),100);
+// One spike cannot lower quality immediately. Sustained load degrades gradually.
+feed({...healthy,cpuRatio:.95});assert.equal(p.adaptiveResource.tier,0);
+for(let i=0;i<20;i++)feed({...healthy,cpuRatio:.95});
+assert.equal(p.adaptiveResource.tier,3);assert.equal(p.adaptiveCadence(player,now,false).interval,300);
+assert.equal(p.adaptiveControlledInterval(now),200);
+for(let i=0;i<12;i++)feed(healthy);assert.equal(p.adaptiveResource.tier,3);
+for(let i=0;i<50;i++)feed(healthy);assert.equal(p.adaptiveResource.tier,0);
+// Invalid samples cannot refresh health, and stale telemetry loses the boost.
+const at=p.adaptiveResource.at;p.adaptiveResourceFeedback({cpuRatio:NaN},now);assert.equal(p.adaptiveResource.at,at);
+assert.equal(p.adaptiveResourceTier(now+11000),1);
+p.adaptiveFeedback({a:50000},now+11000);assert.equal(p.adaptiveCadence(player,now+11000,false).interval,200);
+feed({...healthy,availableKB:80000});assert.ok(p.adaptiveResource.tier>=1);
+ctx.Vars.state.rules.pvp=true;assert.equal(p.adaptiveControlledInterval(now),100);
+'''
+        result=subprocess.run(['node','-e',script],input=json.dumps(INSTALL_JS),text=True,capture_output=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
     def test_receiver_isolation_hysteresis_limits_stale_and_nat(self):
         script = r"""
 const vm=require('node:vm'),assert=require('node:assert/strict');
