@@ -54,7 +54,8 @@ CORE_INSTALL_JS = r"""
    }
    return visible;
   };
- if(!policy.supplement){
+ if(!policy.supplement||policy.controlledVersion!==2){
+  policy.controlledVersion=2;
   policy.supplement=function(){
    if(!policy.controlledEnabled||!Vars.state.isGame()||Vars.state.isPaused())return;
    var now=java.lang.System.currentTimeMillis();
@@ -68,7 +69,10 @@ CORE_INSTALL_JS = r"""
      var owner=players.index(i);
      if(!owner.con||!owner.con.hasConnected||!owner.con.isConnected()||owner.dead())continue;
      var unit=owner.unit();
-     if(unit!=null&&unit.isAdded()&&!unit.dead&&ids.add(unit.id))units.add(unit);
+     // BlockUnitc is an internal building-control proxy. Its transient tile is
+     // not serialized; sending it as an entity creates a client-side proxy
+     // with no tile, crashing MinimapRenderer when it calls icon().
+     if(unit!=null&&!(unit instanceof Packages.mindustry.gen.BlockUnitc)&&unit.isAdded()&&!unit.dead&&ids.add(unit.id))units.add(unit);
     }
     if(units.isEmpty())return;
     for(var j=0;j<players.size();j++){
@@ -103,6 +107,7 @@ CORE_INSTALL_JS = r"""
 """
 
 from .world_interest_policy import INSTALL_JS as INTEREST_INSTALL_JS
+from .world_preview_policy import INSTALL_JS as PREVIEW_INSTALL_JS
 import os
 import json
 from pathlib import Path
@@ -112,8 +117,9 @@ def experimental_config(event_path=None):
     return """
 var p=this._mcpSnapshotPolicy;
 p.interestStaggerEnabled=true;p.interestFarBucketsEnabled=true;
+p.interestPerPlayerFullView=true;
 p.interestEntityIntervalMs=200;p.interestFarBucketCount=6;p.interestFarBucketRounds=[0,0,0,0,0,0];
-p.interestMaxPlayers=8;
+p.interestMaxPlayers=12;
 p.interestReactorEnabled=true;p.interestReactorIntervalMs=500;p.interestReactorHeatThreshold=0.7;
 p.interestRelaxedGuards=true;p.interestBudgetMs=20;
 p.interestHardWorkMs=100;p.interestSlowLimit=3;p.interestSlowCount=0;
@@ -149,7 +155,7 @@ def install_script(mode, event_path=None):
         interest, group = INTEREST_INSTALL_JS, 'C-interest-enabled'
     else:
         interest, group = DISABLE_INTEREST_JS, 'A-native'
-    return core + interest + "\nthis._mcpSnapshotPolicy.experimentGroup='" + group + "';"
+    return core + PREVIEW_INSTALL_JS + interest + "\nthis._mcpSnapshotPolicy.experimentGroup='" + group + "';"
 
 
 def startup_script(profile_path=None):

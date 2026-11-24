@@ -182,6 +182,91 @@ console.log('geometry, visibility, cadence, building budgets, PvP, fail-open, gr
 
 
 class InterestPolicyTests(unittest.TestCase):
+    def test_mixed_players_keep_independent_cadence_visibility_and_transitions(self):
+        harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
+vm.createContext(ctx);vm.runInContext(source,ctx);
+ctx.Packages.mindustry.net.Administration.Config.snapshotInterval.num=()=>300;
+policy.interestReactorEnabled=false;
+const controlled=new Unit(101,1000,0);
+const wide={con:{...receiver.con,viewWidth:700,viewHeight:700,hashCode:()=>8},
+ dead:()=>false,unit:()=>controlled,team:()=>1};
+let players=[receiver,wide];ctx.Groups.player={size:()=>players.length,index:i=>players[i]};
+const distant=Array.from({length:12},(_,i)=>new Unit(i+20,1000,0));
+const group=[mine,near,hidden,controlled,...distant];
+ctx.Groups.sync={size:()=>group.length,index:i=>group[i]};
+const deliveries=[];original.writeCustomEntitySnapshot=(player,units)=>{
+ deliveries.push({key:player.con.hashCode(),at:now,ids:units.a.map(u=>u.id)});
+};
+const start=now;
+for(let t=0;t<1200;t+=25){now=start+t;policy.interestUpdate();assert.equal(policy.interestEnabled,true);}
+const narrow=deliveries.filter(d=>d.key===7),full=deliveries.filter(d=>d.key===8);
+assert.deepEqual(narrow.map(d=>d.at-start),[50,250,450,650,850,1050]);
+assert.deepEqual(full.map(d=>d.at-start),[100,400,700,1000]);
+assert.equal(policy.interestUnitMode,'mixed-per-player');
+assert.equal(policy.interestAOIPlayers,1);assert.equal(policy.interestFullViewPlayers,1);
+assert.equal(policy.interestStates.c7.entityMode,'aoi');
+assert.equal(policy.interestStates.c8.entityMode,'full-view');
+assert.equal(policy.interestStates.c7.farNextBucket,0);
+assert.equal(policy.interestStates.c8.farNextBucket,undefined);
+assert.equal(policy.interestFullViewEntityTicks,4);
+assert.deepEqual(JSON.parse(JSON.stringify(policy.interestPhaseTicks)),{state:4,entities:6,buildings:4});
+for(const unit of distant){
+ assert.equal(narrow.filter(d=>d.ids.includes(unit.id)).length,1);
+ assert.equal(full.filter(d=>d.ids.includes(unit.id)).length,4);
+}
+for(const d of deliveries){
+ assert.ok(d.ids.includes(mine.id));assert.ok(d.ids.includes(controlled.id));
+ assert.ok(!d.ids.includes(hidden.id));
+}
+assert.equal(policy.interestStates.c7.entityBatches,6);
+assert.equal(policy.interestStates.c8.entityBatches,4);
+assert.equal(policy.interestBuildingRecords,4); // both clients retain building delivery
+assert.equal(listeners.a[0],policy.interestWrapper);
+assert.ok(original.snapshotSyncTime<=now); // native global branch is suppressed, not duplicated
+// A wide client's invalid camera remains safe without bypassing the narrow client.
+wide.con.viewWidth=NaN;now=start+1200;policy.interestUpdate();
+assert.equal(policy.interestUnitMode,'mixed-per-player');
+// Repeated camera transitions do not restart shared phases or replay missed slots.
+wide.con.viewWidth=100;wide.con.viewHeight=100;
+now=start+1250;policy.interestUpdate();
+assert.equal(policy.interestUnitMode,'aoi');assert.equal(policy.interestAOIPlayers,2);
+assert.equal(policy.interestStates.c8.entityMode,'aoi');
+assert.equal(deliveries.filter(d=>d.key===8).at(-1).at,start+1250);
+receiver.con.viewWidth=700;receiver.con.viewHeight=700;
+now=start+1300;policy.interestUpdate();
+assert.equal(policy.interestUnitMode,'mixed-per-player');
+assert.equal(policy.interestStates.c7.entityMode,'full-view');
+assert.equal(deliveries.filter(d=>d.key===7).at(-1).at,start+1300);
+const after=deliveries.length;policy.interestUpdate();assert.equal(deliveries.length,after);
+// All-wide clients keep the shared custom scheduler and native fog checks.
+wide.con.viewWidth=700;wide.con.viewHeight=700;now=start+1450;policy.interestUpdate();
+assert.equal(policy.interestUnitMode,'full-view-per-player');
+assert.equal(policy.interestAOIPlayers,0);assert.equal(policy.interestFullViewPlayers,2);
+players=[wide];now=start+1500;policy.interestUpdate();now=start+1600;policy.interestUpdate();
+assert.equal(policy.interestStates.c7,undefined); // departed clients do not retain caches
+// Missing camera is handled per player; PvP and manual disable still use native update.
+assert.equal(policy.interestEnabled,true);
+ctx.Vars.state.rules.pvp=true;const count=deliveries.length;
+now=start+1700;policy.interestUpdate();assert.equal(deliveries.length,count);
+assert.equal(policy.interestUnitMode,'native');
+ctx.Vars.state.rules.pvp=false;
+ctx.Groups.sync={size:()=>0,index:()=>null};const packetCount=packets.length;
+now=start+1900;policy.interestUpdate();
+assert.ok(packets.slice(packetCount).some(a=>a[0]===wide.con&&a[1]===0));
+// Per-player scheduling keeps the same serialization fail-safe and listener restore.
+ctx.Groups.sync={size:()=>group.length,index:i=>group[i]};
+original.writeCustomEntitySnapshot=()=>{throw Error('per-player serialization');};
+now=start+2200;policy.interestUpdate();
+assert.equal(policy.interestEnabled,false);assert.equal(listeners.a[0],original);
+assert.match(policy.interestError,/per-player serialization/);
+console.log('mixed-player 200/300ms cadence, six far buckets, fog, building delivery, camera transitions and disconnect cleanup passed');
+"""
+        result = subprocess.run(['node', '-e', harness],
+                                input=json.dumps(INSTALL_JS + experimental_config().split('p.interestPid=')[0]),
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        print(result.stdout.strip())
+
     def test_cold_impact_reactor_priority_500ms_threshold_fog_and_full_view(self):
         harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
 vm.createContext(ctx);vm.runInContext(source,ctx);
@@ -238,10 +323,10 @@ for(let bucket=0;bucket<6;bucket++){
 controlled.hidden=true;const hiddenIds=new IntSeq();
 assert.ok(!policy.selectEntities(receiver,policy.view(receiver),false,ctx.Groups.sync,hiddenIds,0).a.includes(controlled));
 assert.ok(hiddenIds.a.includes(controlled.id));
-// Eight is an optimization guard, not a hardcoded four-player bound.
-ctx.Groups.player={size:()=>8,index:()=>receiver};assert.equal(policy.preflight(),true);
-ctx.Groups.player={size:()=>9,index:()=>receiver};assert.throws(()=>policy.preflight(),/player bound/);
-console.log('200ms near entities, independent 300ms state/buildings, 1200ms far coverage, global controlled units and eight-player bounds passed');
+// Admission and the optimization guard both permit twelve players.
+ctx.Groups.player={size:()=>12,index:()=>receiver};assert.equal(policy.preflight(),true);
+ctx.Groups.player={size:()=>13,index:()=>receiver};assert.throws(()=>policy.preflight(),/player bound/);
+console.log('200ms near entities, independent 300ms state/buildings, 1200ms far coverage, global controlled units and twelve-player bounds passed');
 """
         result = subprocess.run(['node', '-e', harness], input=json.dumps(INSTALL_JS),
                                 capture_output=True, text=True, timeout=15)

@@ -16,9 +16,9 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('\n',message);self.assertLessEqual(len(message.encode('utf-8')),100)
         self.assertTrue(message.endswith('EnernalIliary/Mlogent'))
 
-    def test_eight_player_profile_and_standalone_service_entrypoint(self):
+    def test_twelve_player_profile_and_standalone_service_entrypoint(self):
         profile=json.loads((ROOT/'deploy/snapshot-profile.example.json').read_text(encoding='utf-8'))
-        self.assertEqual(profile['playerLimit'],8)
+        self.assertEqual(profile['playerLimit'],12)
         service=(ROOT/'deploy/mlogent-world-traffic.service').read_text(encoding='utf-8')
         self.assertIn('WorkingDirectory=/opt/mlogent-ops',service)
         self.assertIn('-m mlogent_ops.world_traffic',service)

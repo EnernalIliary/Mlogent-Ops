@@ -20,6 +20,10 @@ INSTALL_JS = r"""
  policy.interestLastBase=0;
  policy.interestStaggerEnabled=false;
  policy.interestEntityIntervalMs=0;
+ policy.interestPerPlayerFullView=false;
+ policy.interestAOIPlayers=0;
+ policy.interestFullViewPlayers=0;
+ policy.interestFullViewEntityTicks=0;
  policy.interestReactorEnabled=false;
  policy.interestReactorIntervalMs=500;
  policy.interestReactorHeatThreshold=0.7;
@@ -83,7 +87,7 @@ INSTALL_JS = r"""
  policy.interestSwapMaxKB=65536;
  policy.interestEventPath=null;
  policy.interestLastFallbackEvent=null;
- policy.interestMaxPlayers=8;
+ policy.interestMaxPlayers=12;
  policy.interestMaxEntities=1024;
  policy.interestMaxBuildings=3072;
  policy.interestMaxClientBuildingRecords=3072;
@@ -180,12 +184,15 @@ INSTALL_JS = r"""
  policy.preflight=function(){
   if(Groups.player.size()>policy.interestMaxPlayers)throw new Error('AOI player bound exceeded');
   if(Groups.sync.size()>policy.interestMaxEntities)throw new Error('AOI entity bound exceeded');
+  var near=0,full=0;
   for(var i=0;i<Groups.player.size();i++){
    policy.checkBudget();
    var player=Groups.player.index(i);
-   if(player.con&&player.con.hasConnected&&player.con.isConnected()&&policy.fullView(player))return false;
+   if(!player.con||!player.con.hasConnected||!player.con.isConnected())continue;
+   if(policy.fullView(player))full++;else near++;
   }
-  return true;
+  policy.interestAOIPlayers=near;policy.interestFullViewPlayers=full;
+  return policy.interestPerPlayerFullView||full===0;
  };
  policy.view=function(receiver){
   var c=receiver.con,x=Number(c.viewX),y=Number(c.viewY);
@@ -453,7 +460,7 @@ INSTALL_JS = r"""
    policy.interestPhaseOrigin=now;policy.interestPhaseInterval=baseInterval;
    var entityInterval=policy.interestEntityIntervalMs||baseInterval;
    var entityOffset=entityInterval<baseInterval?Math.floor(entityInterval/4):Math.floor(baseInterval/3);
-   policy.interestPhaseNext={state:now,entities:now+entityOffset,buildings:now+Math.floor(2*baseInterval/3),
+   policy.interestPhaseNext={state:now,entities:now+entityOffset,fullEntities:now+Math.floor(baseInterval/3),buildings:now+Math.floor(2*baseInterval/3),
     reactors:now+Math.floor(policy.interestReactorIntervalMs/4)};
    policy.interestPhaseIntervals={};
   }
@@ -468,13 +475,15 @@ INSTALL_JS = r"""
  policy.interestSend=function(now,buildingsOnly){
   var interval=Packages.mindustry.net.Administration.Config.snapshotInterval.num();
   var sendState=!buildingsOnly,sendEntities=!buildingsOnly,sendBuildings=policy.interestBuildingMode==='aoi';
+  var sendFullEntities=!buildingsOnly&&policy.interestPerPlayerFullView&&policy.interestFullViewPlayers>0;
   var sendReactors=policy.interestReactorEnabled;
   if(policy.interestStaggerEnabled){
    sendState=sendState&&policy.interestPhaseDue('state',now,interval,interval);
    sendEntities=sendEntities&&policy.interestPhaseDue('entities',now,policy.interestEntityIntervalMs||interval,interval);
+   sendFullEntities=sendFullEntities&&policy.interestPhaseDue('fullEntities',now,interval,interval);
    sendBuildings=sendBuildings&&policy.interestPhaseDue('buildings',now,interval,interval);
    sendReactors=sendReactors&&policy.interestPhaseDue('reactors',now,policy.interestReactorIntervalMs,interval);
-   if(!sendState&&!sendEntities&&!sendBuildings&&!sendReactors)return;
+   if(!sendState&&!sendEntities&&!sendFullEntities&&!sendBuildings&&!sendReactors)return;
   }else if(now-policy.interestLastBase<interval)return;
   // A native update may cross a due boundary. Open a send-only trace here if
   // the pre-update observer did not run; its setup is outside the work budget.
@@ -491,7 +500,7 @@ INSTALL_JS = r"""
   var buildings=policy.interestBuildings;
   if(sendReactors&&Groups.player.size()>0)policy.prepareReactors();
   var active={};
-  if(sendEntities||sendBuildings||sendReactors){
+  if(sendEntities||sendFullEntities||sendBuildings||sendReactors){
   for(var j=0;j<Groups.player.size();j++){
    policy.checkBudget();
    var receiver=Groups.player.index(j),con=receiver.con;
@@ -500,6 +509,8 @@ INSTALL_JS = r"""
    var state=policy.interestStates[key];
    if(!state){state={lastFar:0,buildings:{},cursor:0};policy.interestStates[key]=state;}
    var view=policy.view(receiver),farDue=now-state.lastFar>=1000;
+   var fullView=policy.interestPerPlayerFullView&&policy.fullView(receiver);
+   state.entityMode=fullView?'full-view':'aoi';
    if(sendReactors){
     policy.interestStage='reactor-priority';
     if(policy.interestDiagnosticActive)policy.interestDiagnosticMark('reactor-priority');
@@ -508,16 +519,16 @@ INSTALL_JS = r"""
     policy.writeBuildings(receiver,null,state.reactorState,policy.interestReactors,now);
     policy.interestReactorRecords+=policy.interestBuildingRecords-beforeRecords;
    }
-   if(sendEntities){
+   if(fullView?sendFullEntities:sendEntities){
    var farBucket=null;
-   if(policy.interestFarBucketsEnabled){
+   if(policy.interestFarBucketsEnabled&&!fullView){
     if(state.farNextBucket===undefined)state.farNextBucket=0;
     farBucket=state.farNextBucket;
    }
    var hidden=new Packages.arc.struct.IntSeq();
    policy.interestStage='entity-selection';
    if(policy.interestDiagnosticActive)policy.interestDiagnosticMark('entity-selection');
-   var selected=policy.selectEntities(receiver,view,farDue,Groups.sync,hidden,farBucket);
+   var selected=policy.selectEntities(receiver,fullView?null:view,fullView||farDue,Groups.sync,hidden,farBucket);
    policy.interestEntityMaxSelection=Math.max(policy.interestEntityMaxSelection,selected.size);
    if(policy.interestDiagnosticActive)policy.interestDiagnosticMark('entity-write');
    // An empty heartbeat prevents client snapshot timeout when its viewport is empty.
@@ -540,6 +551,8 @@ INSTALL_JS = r"""
     }
    }
    policy.interestEntityRecords+=selected.size;
+   state.entityBatches=(state.entityBatches||0)+1;state.entityRecords=(state.entityRecords||0)+selected.size;
+   state.lastEntityAt=now;
    if(farDue)state.lastFar=now;
    if(hidden.size>0)Packages.mindustry.gen.Call.hiddenSnapshot(con,hidden);
    if(con.localEntities.size>0)original.writeCustomEntitySnapshot(receiver,con.localEntities);
@@ -559,6 +572,7 @@ INSTALL_JS = r"""
   for(var key in policy.interestStates)if(!active[key])delete policy.interestStates[key];
   }
   if(sendEntities)policy.interestPhaseTicks.entities++;
+  if(sendFullEntities)policy.interestFullViewEntityTicks++;
   if(sendBuildings)policy.interestPhaseTicks.buildings++;
   if(sendReactors)policy.interestReactorTicks++;
   if(sendEntities||(buildingsOnly&&sendBuildings))policy.interestTicks++;
@@ -574,6 +588,8 @@ INSTALL_JS = r"""
   }else policy.interestMaxMs=Math.max(policy.interestMaxMs,elapsed);
  };
  policy.interestUpdate=function(){
+  try{if(typeof policy.limitPreviewPlans==='function')policy.limitPreviewPlans();}
+  catch(error){policy.previewPlanError=String(error);}
   if(!policy.interestEnabled||Vars.state.rules.pvp||!Vars.state.isGame()||!Vars.net.server()){
    policy.interestUnitMode='native';
    policy.interestBuildingEffectiveMode='native';
@@ -619,7 +635,8 @@ INSTALL_JS = r"""
    }
    if(policy.interestInFullView)policy.interestPhaseOrigin=null;
    policy.interestInFullView=false;
-   policy.interestUnitMode='aoi';
+   policy.interestUnitMode=policy.interestPerPlayerFullView&&policy.interestFullViewPlayers?
+    (policy.interestAOIPlayers?'mixed-per-player':'full-view-per-player'):'aoi';
    // Suppress only the stock periodic entity/state branch, not events,
    // health updates, build previews, disconnect handling or custom RPCs.
    original.snapshotSyncTime=Packages.arc.util.Time.millis()+60000;

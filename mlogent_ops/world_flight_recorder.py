@@ -92,6 +92,8 @@ if(!p)sb.append(JSON.stringify({installed:false}));
 else sb.append(JSON.stringify({installed:!!p.interestInstalled,enabled:!!p.interestEnabled,
 stagger:!!p.interestStaggerEnabled,farBuckets:!!p.interestFarBucketsEnabled,
 relaxed:!!p.interestRelaxedGuards,unitMode:p.interestUnitMode,
+perPlayerFullView:!!p.interestPerPlayerFullView,aoiPlayers:p.interestAOIPlayers,fullViewPlayers:p.interestFullViewPlayers,
+fullViewEntityTicks:p.interestFullViewEntityTicks,
 buildingMode:p.interestBuildingEffectiveMode,buildingCount:p.interestBuildingCount,
 players:Groups.player.size(),units:Groups.unit.size(),map:String(Vars.state.map.name()),
 maxPlayers:p.interestMaxPlayers,maxEntities:p.interestMaxEntities,

@@ -3,5 +3,5 @@
   "eventPath": "/opt/mlogent/out/_world/aoi-fallback.json",
   "opsRoot": "/opt/mlogent-ops",
   "runningDescription": "[highlight]Mlogent[white]附属服 [yellow][]\n[gray] EnernalIliary/Mlogent",
-  "playerLimit": 8
+  "playerLimit": 12
 }

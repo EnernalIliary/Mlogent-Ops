@@ -27,6 +27,7 @@ class Seq {
 }
 class IntSet {constructor(){this.ids=new Set();}add(id){if(this.ids.has(id))return false;this.ids.add(id);return true;}}
 const events=[];
+class BlockUnitc {}
 const unit=(id,hidden=false)=>({id,dead:false,isAdded:()=>true,isSyncHidden:t=>hidden&&t==='enemy'});
 const a=unit(1), b=unit(2,true);
 const player=(name,u,team)=>({name,con:{hasConnected:true,isConnected:()=>true},dead:()=>false,unit:()=>u,team:()=>team});
@@ -35,7 +36,7 @@ const ctx={
  sb:{append(){}},java:{lang:{Integer:Number,System:{currentTimeMillis:()=>now}}},
  Packages:{arc:{struct:{Seq,IntSet},util:{Log:{info(){},err(){}}}},mindustry:{
   net:{Administration:{Config:{snapshotInterval:{num:()=>interval,set:x=>{interval=Number(x);}}}}},
-  game:{EventType:{WorldLoadEvent:'load',Trigger:{update:'update'}}}}},
+  gen:{BlockUnitc},game:{EventType:{WorldLoadEvent:'load',Trigger:{update:'update'}}}}},
  Events:{on:(t,fn)=>events.push(fn),run:(t,fn)=>events.push(fn)},
  Groups:{player:{size:()=>owners.length,index:i=>owners[i]}},
  Vars:{state:{rules:{pvp:false},isGame:()=>true,isPaused:()=>paused},netServer:{
@@ -54,6 +55,13 @@ assert.deepEqual(sent,[['a',[1,2]],['b',[1,2]],['enemy',[1]]]);
 assert.equal(p.controlledEntities,5); // shared unit deduplicated, hidden enemy excluded
 sent=[];now+=50;p.supplement();assert.equal(sent.length,0);
 now+=50;p.supplement();assert.equal(sent.length,3);
+// Internal building-control proxies must never enter entity snapshots. Their
+// transient tile cannot be reconstructed by clients (minimap icon NPE).
+const blockProxy=Object.assign(new BlockUnitc(),unit(99));
+owners[0].unit=()=>blockProxy;owners[2].unit=()=>blockProxy;
+sent=[];now+=100;p.supplement();
+assert.deepEqual(sent,[['a',[2]],['b',[2]]]);
+owners[0].unit=()=>a;owners[2].unit=()=>a;
 sent=[];paused=true;now+=100;p.supplement();assert.equal(sent.length,0);paused=false;
 p.controlledEnabled=false;now+=100;p.supplement();assert.equal(sent.length,0);p.controlledEnabled=true;
 owners[0].con.hasConnected=false;owners[1].dead=()=>true;
