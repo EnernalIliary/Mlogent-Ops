@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- 将原生 `/push` 请求持久化投递到服务器 Agent 收件箱，移除旧中继的自动群发路径；投递失败保留原文件重试。
+
 ## 0.2.1 — 2026-11-24
 
 - Use a module-specific language-helper reference so later startup loops cannot

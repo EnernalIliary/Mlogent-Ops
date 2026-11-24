@@ -1,0 +1,21 @@
+[Unit]
+Description=Mlogent game requests to server Agent inbox
+After=mlogent-world.service
+
+[Service]
+User=mlog
+WorkingDirectory=/opt/mlogent-ops
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m mlogent_ops.world_push_relay
+Restart=always
+RestartSec=5
+MemoryMax=128M
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/opt/mlogent/out/_world/server/push_replies
+ReadWritePaths=/www/dk_project/dk_app/astrbot/astrbot_Iliary/data/plugin_data/astrbot_plugin_world_push_inbox
+
+[Install]
+WantedBy=multi-user.target

@@ -53,6 +53,11 @@ Mlogent 服务设置 `MLOGENT_OPS_ROOT=/opt/mlogent-ops` 后即可加载本项�
 
 ## 语言支持与发布包
 
+`deploy/mlogent-push-relay.service` 将游戏 `/push` 的持久化请求交给服务器 Agent
+收件箱，不自动发送到 QQ 群。需同时启用主体的原生 push 处理器与 AstrBot Agent
+插件；回复通过请求 ID 绑定原玩家连接。写入收件箱失败时保留请求重试。
+仅运行服务不会自动创建 Agent 或模型配置。
+
 Mlogent 的 AFK、polyAI 和轮播提示支持简体中文与英文，默认跟随客户端语言；
 使用 `/language zh`、`/language en` 或 `/language auto` 设置。
 Wayzer 独立使用 `/lang zh` 或 `/lang en`，部分硬编码菜单仍保留原文。
