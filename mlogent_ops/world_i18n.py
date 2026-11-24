@@ -27,21 +27,21 @@ MESSAGES = {
 INSTALL_JS = r"""
 (function(){
  var mlogentLanguageRoot=this;
- var i=mlogentLanguageRoot._mlogentI18n;
- if(!i)i=mlogentLanguageRoot._mlogentI18n={overrides:{}};
- i.catalog=CATALOG;
- i.language=function(player){
+ var mlogentLanguageHelper=mlogentLanguageRoot._mlogentI18n;
+ if(!mlogentLanguageHelper)mlogentLanguageHelper=mlogentLanguageRoot._mlogentI18n={overrides:{}};
+ mlogentLanguageHelper.catalog=CATALOG;
+ mlogentLanguageHelper.language=function(player){
   var locale='zh';
   try{
-   var id=String(player.uuid()),saved=i.overrides[id];
+   var id=String(player.uuid()),saved=mlogentLanguageHelper.overrides[id];
    if(!saved&&typeof Core!=='undefined'&&Core.settings)saved=String(Core.settings.getString('mlogent.language.'+id,''));
    locale=saved||String(player.locale||'zh');
   }catch(ignore){locale=String(player&&player.locale||'zh');}
   return locale.toLowerCase().indexOf('zh')===0?'zh':'en';
  };
- i.text=function(player,key,values){
-  var pair=i.catalog[key];if(!pair)return key;
-  var text=pair[i.language(player)==='zh'?0:1];
+ mlogentLanguageHelper.text=function(player,key,values){
+  var pair=mlogentLanguageHelper.catalog[key];if(!pair)return key;
+  var text=pair[mlogentLanguageHelper.language(player)==='zh'?0:1];
   if(values)text=text.replace(/\{([a-zA-Z]+)\}/g,function(all,name){return values[name]===undefined?all:String(values[name]);});
   return text;
  };
@@ -54,13 +54,13 @@ INSTALL_JS = r"""
     var choice=args.length?String(args[0]).toLowerCase():'';
     if(choice==='zh'||choice==='en'||choice==='auto'){
      var id=String(player.uuid());
-     if(choice==='auto')delete i.overrides[id];else i.overrides[id]=choice;
+     if(choice==='auto')delete mlogentLanguageHelper.overrides[id];else mlogentLanguageHelper.overrides[id]=choice;
      if(typeof Core!=='undefined'&&Core.settings){
       if(choice==='auto')Core.settings.remove('mlogent.language.'+id);else Core.settings.put('mlogent.language.'+id,choice);
       Core.settings.manualSave();
      }
-     player.sendMessage(i.text(player,'language.set'));
-    }else player.sendMessage(i.text(player,'language.help'));
+     player.sendMessage(mlogentLanguageHelper.text(player,'language.set'));
+    }else player.sendMessage(mlogentLanguageHelper.text(player,'language.help'));
    }
   }));
  }

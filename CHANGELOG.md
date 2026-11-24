@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 — 2026-11-24
+
+- Use a module-specific language-helper reference so later startup loops cannot
+  overwrite callback state under the live Rhino runtime.
+
 ## 0.2.0 — 2026-11-24
 
 - Add bounded building observation and optional byte-identical deduplication.
