@@ -1,0 +1,21 @@
+[Unit]
+Description=Mlogent per-player adaptive snapshot bandwidth feedback
+After=network.target mlogent-world.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mlogent-ops
+Environment=MLOGENT_ROOT=/opt/mlogent-releases/v1.10.0-worldsleep-20261122
+ExecStart=/opt/uv-python/cpython-3.12-linux-x86_64-gnu/bin/python3.12 -m mlogent_ops.world_bandwidth_controller
+Restart=on-failure
+RestartSec=5
+MemoryMax=48M
+CPUQuota=10%
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_RAW
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

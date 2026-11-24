@@ -54,8 +54,8 @@ CORE_INSTALL_JS = r"""
    }
    return visible;
   };
- if(!policy.supplement||policy.controlledVersion!==2){
-  policy.controlledVersion=2;
+ if(!policy.supplement||policy.controlledVersion!==3){
+  policy.controlledVersion=3;
   policy.supplement=function(){
    if(!policy.controlledEnabled||!Vars.state.isGame()||Vars.state.isPaused())return;
    var now=java.lang.System.currentTimeMillis();
@@ -78,6 +78,7 @@ CORE_INSTALL_JS = r"""
     for(var j=0;j<players.size();j++){
      var receiver=players.index(j);
      if(!receiver.con||!receiver.con.hasConnected||!receiver.con.isConnected())continue;
+     if(typeof policy.afkSupplementDue==='function'&&!policy.afkSupplementDue(receiver,now))continue;
      var visible=policy.visibleUnits(receiver,units);
      if(visible.isEmpty())continue;
      Vars.netServer.writeCustomEntitySnapshot(receiver,visible);
@@ -108,6 +109,11 @@ CORE_INSTALL_JS = r"""
 
 from .world_interest_policy import INSTALL_JS as INTEREST_INSTALL_JS
 from .world_preview_policy import INSTALL_JS as PREVIEW_INSTALL_JS
+from .world_building_observer import INSTALL_JS as BUILDING_OBSERVER_JS
+from .world_adaptive_policy import INSTALL_JS as ADAPTIVE_INSTALL_JS
+from .world_afk_policy import INSTALL_JS as AFK_INSTALL_JS
+from .world_poly_verification import INSTALL_JS as POLY_INSTALL_JS
+from .world_notices import INSTALL_JS as NOTICES_INSTALL_JS
 import os
 import json
 from pathlib import Path
@@ -155,7 +161,7 @@ def install_script(mode, event_path=None):
         interest, group = INTEREST_INSTALL_JS, 'C-interest-enabled'
     else:
         interest, group = DISABLE_INTEREST_JS, 'A-native'
-    return core + PREVIEW_INSTALL_JS + interest + "\nthis._mcpSnapshotPolicy.experimentGroup='" + group + "';"
+    return core + PREVIEW_INSTALL_JS + BUILDING_OBSERVER_JS + ADAPTIVE_INSTALL_JS + AFK_INSTALL_JS + POLY_INSTALL_JS + NOTICES_INSTALL_JS + interest + "\nthis._mcpSnapshotPolicy.experimentGroup='" + group + "';"
 
 
 def startup_script(profile_path=None):
@@ -170,7 +176,24 @@ def startup_script(profile_path=None):
         mode = profile.get('mode')
         if mode in ('native', 'wrapper', '1', 'experimental'):
             event = profile.get('eventPath')
-            return install_script(mode, event if isinstance(event, str) else None)
+            script = install_script(mode, event if isinstance(event, str) else None)
+            if profile.get('buildingObservation') is True:
+                script += '\nthis._mcpSnapshotPolicy.buildingObservationEnabled=true;'
+            if profile.get('buildingDedup') is True and mode == 'experimental':
+                script += ('\nthis._mcpSnapshotPolicy.buildingObservationEnabled=true;'
+                           'this._mcpSnapshotPolicy.buildingDedupEnabled=true;'
+                           'this._mcpSnapshotPolicy.buildingObservation.mode="dedup";')
+            if profile.get('enemyBuildingsInViewOnly') is True and mode == 'experimental':
+                script += '\nthis._mcpSnapshotPolicy.interestEnemyBuildingsInViewOnly=true;'
+            if profile.get('adaptiveBandwidth') is True and mode == 'experimental':
+                script += '\nthis._mcpSnapshotPolicy.adaptiveEnabled=true;'
+            if profile.get('afkVerification') is True and mode == 'experimental':
+                script += '\nthis._mcpSnapshotPolicy.afkEnabled=true;'
+            if profile.get('polyVerification') is True:
+                script += '\nthis._mcpSnapshotPolicy.polyEnabled=true;'
+            if profile.get('rotatingNotices') is True:
+                script += '\nthis._mlogentNotices.enabled=true;'
+            return script
     except (OSError, ValueError, AttributeError):
         pass
     return install_script(os.environ.get('MLOG_WORLD_VIEWPORT_SYNC'))

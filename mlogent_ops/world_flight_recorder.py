@@ -108,7 +108,15 @@ entityInterval:p.interestEntityIntervalMs||Packages.mindustry.net.Administration
 farBucketCount:p.interestFarBucketCount,controlledOutsideView:!!p.controlledOutsideView,controlledInterval:p.controlledInterval,
 reactorEnabled:!!p.interestReactorEnabled,reactorInterval:p.interestReactorIntervalMs,
 reactorThreshold:p.interestReactorHeatThreshold,reactorCandidates:p.interestReactorCount,
-reactorTicks:p.interestReactorTicks,reactorRecords:p.interestReactorRecords,reactorMaxAgeMs:p.interestReactorMaxAgeMs}));
+reactorTicks:p.interestReactorTicks,reactorRecords:p.interestReactorRecords,reactorMaxAgeMs:p.interestReactorMaxAgeMs,
+buildingObservationEnabled:!!p.buildingObservationEnabled,buildingDedupEnabled:!!p.buildingDedupEnabled,
+enemyBuildingsInViewOnly:!!p.interestEnemyBuildingsInViewOnly,outsideBuildingSkips:p.interestBuildingOutsideSkipped,
+adaptiveEnabled:!!p.adaptiveEnabled,adaptiveTargetBps:p.adaptiveTargetBps,
+adaptiveFeedbackAt:p.adaptiveFeedbackAt,adaptiveClients:p.adaptiveClients||{},
+afkEnabled:!!p.afkEnabled,afkError:p.afkError||null,
+polyEnabled:!!p.polyEnabled,polyError:p.polyError||null,polyStats:p.polyStats||null,
+afkClients:(function(){var a={};for(var k in p.afkStates){var s=p.afkStates[k];a[k]={mode:s.mode,lastActivity:s.lastActivity,reason:s.reason};}return a;})(),
+buildingObservation:p.buildingObservation||null}));
 """
 
 

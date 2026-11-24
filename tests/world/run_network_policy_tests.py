@@ -78,6 +78,12 @@ const check=new Seq();check.add(a);check.add(b);
 assert.deepEqual(p.visibleUnits(owners[0],check).items,[a,b]);
 assert.deepEqual(p.visibleUnits(owners[2],check).items,[a]); // fog-hidden enemy remains excluded
 assert.equal(p.controlledOutsideView,true);
+// AFK throttles only the receiving connection, never the active observers.
+fail=false;owners[0].con.hasConnected=true;owners[1].dead=()=>false;
+owners[0].unit=()=>a;owners[1].unit=()=>b;owners[2].unit=()=>a;
+p.controlledEnabled=true;p.afkSupplementDue=receiver=>receiver.name!=='a';
+sent=[];now+=100;p.supplement();assert.ok(sent.length>0);assert.ok(sent.every(x=>x[0]!=='a'));
+delete p.afkSupplementDue;
 p.interestEnabled=false;
 assert.deepEqual(p.visibleUnits(owners[0],check).items,[a,b]);
 // A missing/partially loaded policy must never escape an update callback.

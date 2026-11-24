@@ -182,6 +182,180 @@ console.log('geometry, visibility, cadence, building budgets, PvP, fail-open, gr
 
 
 class InterestPolicyTests(unittest.TestCase):
+    def test_afk_receiver_one_second_overrides_adaptive_without_affecting_other(self):
+        harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
+const second={...receiver,con:{...receiver.con,hashCode:()=>8}};
+ctx.Groups.player={size:()=>2,index:i=>[receiver,second][i]};
+const deliveries=[];original.writeCustomEntitySnapshot=(r,s)=>deliveries.push({key:r.con.hashCode(),at:now});
+vm.createContext(ctx);vm.runInContext(source,ctx);
+policy.interestStaggerEnabled=true;policy.interestEntityIntervalMs=200;
+policy.interestPerPlayerFullView=true;
+const idle={nextEntity:now,interval:1000,lastEntity:0};
+policy.afkCadence=r=>r===receiver?idle:null;
+const start=now;
+for(let t=0;t<3000;t+=50){now=start+t;policy.interestUpdate();}
+assert.equal(deliveries.filter(x=>x.key===7).length,3);
+assert.equal(deliveries.filter(x=>x.key===8).length,15);
+policy.afkCadence=()=>null;
+const count=deliveries.filter(x=>x.key===7).length;
+for(let t=0;t<1000;t+=50){now=start+3000+t;policy.interestUpdate();}
+assert.equal(deliveries.filter(x=>x.key===7).length-count,5);
+"""
+        result=subprocess.run(['node','-e',harness],input=json.dumps(INSTALL_JS),text=True,capture_output=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_adaptive_receivers_dispatch_independently_and_stale_restores(self):
+        from mlogent_ops.world_adaptive_policy import INSTALL_JS as ADAPTIVE_JS
+        harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
+const second={...receiver,con:{...receiver.con,address:'b',hashCode:()=>8}};
+receiver.con.address='a';ctx.Groups.player={size:()=>2,index:i=>[receiver,second][i]};
+let deliveries=[];original.writeCustomEntitySnapshot=(r,s)=>deliveries.push({key:r.con.hashCode(),at:now});
+vm.createContext(ctx);vm.runInContext(source,ctx);
+policy.interestStaggerEnabled=true;policy.interestEntityIntervalMs=200;
+policy.interestPerPlayerFullView=true;policy.adaptiveEnabled=true;
+policy.adaptiveFeedback({a:200000,b:50000},now);
+policy.adaptiveClients.c7.level=3;
+const start=now;
+for(let t=0;t<2000;t+=50){now=start+t;policy.interestUpdate();}
+const busy=deliveries.filter(x=>x.key===7),light=deliveries.filter(x=>x.key===8);
+assert.ok(busy.length>=4&&busy.length<=5);assert.ok(light.length>=9&&light.length<=10);
+for(let i=1;i<busy.length;i++)assert.ok(busy[i].at-busy[i-1].at>=400);
+assert.equal(policy.interestEnabled,true);
+// Monitoring outage restores base cadence rather than extending indefinitely.
+policy.adaptiveFeedbackAt=now-11000;assert.equal(policy.adaptiveCadence(receiver,now,false),null);
+events[0]();assert.equal(Object.keys(policy.adaptiveClients).length,0);
+"""
+        result = subprocess.run(['node','-e',harness],input=json.dumps(INSTALL_JS+ADAPTIVE_JS),
+                                capture_output=True,text=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_enemy_buildings_outside_interest_stop_and_reenter_refresh(self):
+        harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
+vm.createContext(ctx);vm.runInContext(source,ctx);
+policy.interestEnemyBuildingsInViewOnly=true;
+const ownFar=build(31,1000),enemyFar=build(32,1000),enemyNear=build(33,0);
+enemyFar.team=2;enemyNear.team=2;buildings=[ownFar,enemyFar,enemyNear];
+const state={},list=new Seq(buildings);let team=1;receiver.team=()=>team;
+const send=()=>policy.writeBuildings(receiver,policy.view(receiver),state,list,now);
+send();assert.deepEqual(packets.flatMap(p=>p[2].positions),[31,33]);
+assert.equal(state.buildings.b32,undefined);assert.ok(policy.interestBuildingOutsideSkipped>0);
+receiver.con.viewX=1000;now+=250;send();
+assert.deepEqual(packets.at(-1)[2].positions,[31,32]);
+assert.equal(state.buildings.b33.outsideInterest,true);
+receiver.con.viewX=0;now+=250;send();assert.deepEqual(packets.at(-1)[2].positions,[33]);
+// Different receiving team gets its own complete initial states.
+team=2;now+=250;send();assert.deepEqual(packets.at(-1)[2].positions,[32,33]);
+assert.equal(state.buildings.b31,undefined);
+// Fog wins even inside the camera; reveal schedules immediate refresh.
+team=1;enemyNear.hidden=true;now+=250;send();
+assert.ok(!packets.at(-1)[2].positions.includes(33));
+enemyNear.hidden=false;now+=250;send();assert.deepEqual(packets.at(-1)[2].positions,[33]);
+// An invalid camera falls back to full delivery instead of dropping data.
+receiver.con.viewWidth=NaN;now+=12500;send();
+assert.ok(packets.at(-1)[2].positions.includes(32));receiver.con.viewWidth=100;
+// Enemy priority reactors also obey the camera gate, own reactors retain it.
+policy.isLowHeatReactor=()=>true;
+const priority={reactorPriority:true};now+=1000;
+policy.writeBuildings(receiver,policy.view(receiver),priority,list,now);
+assert.deepEqual(packets.at(-1)[2].positions,[31,33]);
+// No enemy offscreen serialization even when fog is disabled.
+ctx.Vars.state.rules.fog=false;
+enemyFar.writeSync=()=>{throw Error('offscreen enemy serialized');};now+=1000;
+policy.writeBuildings(receiver,policy.view(receiver),priority,list,now);
+"""
+        result = subprocess.run(['node', '-e', harness], input=json.dumps(INSTALL_JS),
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
+    def test_dedup_packets_preserve_bytes_counts_reveal_priority_and_failure(self):
+        from mlogent_ops.world_building_observer import INSTALL_JS as OBSERVER_JS
+        harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
+ctx.java.util={Arrays:{copyOfRange:(a,s,e)=>a.slice(s,e),
+ equals:(a,b)=>a.length===b.length&&a.every((v,i)=>v===b[i])}};
+Stream.prototype.reset=function(){this.n=0;this.bytes=[];};
+Stream.prototype.write=function(a,s,n){this.bytes.push(...a.slice(s,s+n));this.n+=n;};
+Stream.prototype.toByteArray=function(){return this.bytes.slice();};
+Output.prototype.writeInt=function(v){this.s.write([0,0,0,v],0,4);};
+Output.prototype.writeShort=function(v){this.s.write([0,v],0,2);};
+buildings=[build(11,0),build(12,10)];
+for(const b of buildings)b.writeSync=w=>w.s.write(new Array(10).fill(b.marker||0),0,10);
+vm.createContext(ctx);vm.runInContext(source,ctx);
+policy.buildingObservationEnabled=true;policy.buildingDedupEnabled=true;
+const state={},view=policy.view(receiver),list=new Seq(buildings);
+const send=()=>policy.writeBuildings(receiver,view,state,list,now);
+send();assert.equal(packets.length,1);assert.equal(packets[0][1],2);
+const originalBytes=packets[0][2].slice();
+now+=6000;send();assert.equal(packets.length,1);assert.equal(policy.buildingObservation.skippedRecords,2);
+buildings[1].marker=9;now+=6000;send();
+assert.equal(packets.length,2);assert.equal(packets[1][1],1);
+assert.deepEqual(packets[1][2],originalBytes.slice(16,22).concat(new Array(10).fill(9)));
+// Full refresh is measured from the last real send, not skipped checks.
+now+=12000;send();assert.equal(packets.length,3);assert.equal(packets[2][1],1);
+assert.deepEqual(packets[2][2],originalBytes.slice(0,16));
+buildings[0].team=2;buildings[0].hidden=true;now+=6000;send();
+buildings[0].hidden=false;now+=300;send();
+assert.ok(packets.at(-1)[2].slice(0,16).every((v,i)=>v===originalBytes[i]));
+// Priority reactor traffic never suppresses an identical record.
+policy.isLowHeatReactor=()=>true;
+const priority={reactorPriority:true};now+=1000;
+policy.writeBuildings(receiver,view,priority,list,now);const before=packets.length;
+now+=500;policy.writeBuildings(receiver,view,priority,list,now);
+assert.equal(packets.length,before+1);assert.equal(packets.at(-1)[1],2);
+// A failed send invalidates optimistic baselines; a retry sends everything.
+ctx.Packages.mindustry.gen.Call.blockSnapshot=()=>{throw Error('network send');};
+now+=500;assert.throws(()=>policy.writeBuildings(receiver,view,priority,list,now),/network send/);
+assert.equal(policy.buildingObservation.cacheBytes,0);
+ctx.Packages.mindustry.gen.Call.blockSnapshot=(...a)=>packets.push(a);
+policy.resetBuildingState(priority);priority.reactorPriority=true;
+now+=500;policy.writeBuildings(receiver,view,priority,list,now);
+assert.equal(packets.at(-1)[1],2);
+// If comparison fails after an earlier record was marked for omission, the
+// complete original packet still goes out and only dedup is disabled.
+policy.isLowHeatReactor=()=>false;const ordinary={};now+=1000;
+policy.writeBuildings(receiver,view,ordinary,list,now);
+let copies=0;ctx.java.util.Arrays.copyOfRange=(a,s,e)=>{
+ if(++copies===2)throw Error('comparison failure');return a.slice(s,e);};
+now+=6000;policy.writeBuildings(receiver,view,ordinary,list,now);
+assert.equal(packets.at(-1)[1],2);assert.equal(packets.at(-1)[2].length,32);
+assert.equal(policy.buildingDedupEnabled,false);assert.equal(policy.interestEnabled,true);
+"""
+        result = subprocess.run(['node', '-e', harness], input=json.dumps(INSTALL_JS+OBSERVER_JS),
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
+    def test_building_observer_uses_sent_records_without_changing_packets(self):
+        from mlogent_ops.world_building_observer import INSTALL_JS as OBSERVER_JS
+        harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
+ctx.java.util={Arrays:{copyOfRange:(a,s,e)=>a.slice(s,e),
+ equals:(a,b)=>a.length===b.length&&a.every((v,i)=>v===b[i])}};
+Stream.prototype.toByteArray=function(){const a=new Array(this.n).fill(0);a[a.length-1]=this.marker||0;return a;};
+buildings=[buildings[0]];let serializations=0;
+buildings[0].writeSync=w=>{serializations++;w.s.n+=10;w.s.marker=buildings[0].marker||0;};
+vm.createContext(ctx);vm.runInContext(source,ctx);
+policy.buildingObservationEnabled=true;
+const state={};const view=policy.view(receiver);
+policy.writeBuildings(receiver,view,state,new Seq(buildings),now);
+now+=6000;policy.writeBuildings(receiver,view,state,new Seq(buildings),now);
+assert.equal(policy.buildingObservation.samples,2);assert.equal(policy.buildingObservation.repeated,1);
+buildings[0].marker=1;now+=6000;
+policy.writeBuildings(receiver,view,state,new Seq(buildings),now);
+assert.equal(policy.buildingObservation.repeated,1);assert.equal(policy.buildingObservation.comparable,2);
+assert.equal(packets.length,3);assert.equal(serializations,3);
+assert.ok(packets.every(a=>a[1]===1&&a[2].length===16));
+// Fog-hidden buildings are never serialized or observed.
+buildings[0].team=2;buildings[0].hidden=true;now+=6000;
+policy.writeBuildings(receiver,view,state,new Seq(buildings),now);
+assert.equal(packets.length,3);assert.equal(policy.buildingObservation.samples,3);
+// A sampling failure cannot prevent native send or disable synchronization.
+buildings[0].hidden=false;ctx.java.util.Arrays.copyOfRange=()=>{throw Error('observer only');};
+now+=6000;policy.writeBuildings(receiver,view,state,new Seq(buildings),now);
+assert.equal(packets.length,4);assert.equal(policy.interestEnabled,true);
+assert.equal(policy.buildingObservationEnabled,false);
+"""
+        result = subprocess.run(['node', '-e', harness], input=json.dumps(INSTALL_JS+OBSERVER_JS),
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
     def test_mixed_players_keep_independent_cadence_visibility_and_transitions(self):
         harness = HARNESS.split('vm.createContext(ctx);')[0] + r"""
 vm.createContext(ctx);vm.runInContext(source,ctx);

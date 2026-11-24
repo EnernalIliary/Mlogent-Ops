@@ -71,6 +71,8 @@ INSTALL_JS = r"""
  policy.interestBuildingYields=0;
  policy.interestBuildingFogSkipped=0;
  policy.interestBuildingRevealed=0;
+ policy.interestEnemyBuildingsInViewOnly=false;
+ policy.interestBuildingOutsideSkipped=0;
  policy.interestDiagnosticsEnabled=false;
  policy.interestDiagnosticActive=null;
  // Conservative experimental bounds. Native serialization cannot be preempted;
@@ -273,9 +275,9 @@ INSTALL_JS = r"""
  };
  policy.buildingDue=function(state,key,blockId,near,now,critical){
   var prev=state.buildings[key];
-  if(state.reactorPriority)return !prev||prev.fogHidden||prev.block!==blockId||
+  if(state.reactorPriority)return !prev||prev.fogHidden||prev.outsideInterest||prev.block!==blockId||
    prev.reactorActive!==critical||(critical&&now-prev.time>=policy.interestReactorIntervalMs);
-  return !prev||prev.fogHidden||prev.block!==blockId||(near&&!prev.near)||now-prev.time>=(near?6000:12000);
+  return !prev||prev.fogHidden||prev.outsideInterest||prev.block!==blockId||(near&&!prev.near)||now-prev.time>=(near?6000:12000);
  };
  policy.prepareBuildings=function(now){
   if(policy.interestBuildings!==null&&now-policy.interestBuildingCheckAt<
@@ -319,10 +321,12 @@ INSTALL_JS = r"""
   var started=java.lang.System.nanoTime(),cleanupNs=0,initNs=0,serializeNs=0,visibilityNs=0;
   var count=0,total=0,records=0,scanned=0,cleaned=0,yielded=false,buffer=null;
   var detailed=policy.interestDiagnosticsEnabled,encodeNs=0,copyNs=0,sendNs=0;
-  var fog=!!Vars.state.rules.fog,viewer=fog?receiver.team():null;
+  var observations=[];
+  var fog=!!Vars.state.rules.fog,receiverTeam=receiver.team(),teamKey=String(receiverTeam),viewer=fog?receiverTeam:null;
   var length=buildings.size;
   if(length>policy.interestMaxBuildings)throw new Error('AOI building bound exceeded');
   if(!state.buildingKeys)policy.resetBuildingState(state);
+  if(state.receiverTeamKey!==teamKey){policy.resetBuildingState(state);state.receiverTeamKey=teamKey;}
   if(state.buildingCount>policy.interestMaxClientBuildingRecords)
    throw new Error('AOI client building-state bound exceeded');
   var deadline=started+policy.interestBuildingSoftBudgetMs*1000000;
@@ -341,17 +345,56 @@ INSTALL_JS = r"""
     state.buildingKeys[slot]=key;state.buildingCount++;
    }
    if(previous&&previous.fogHidden)policy.interestBuildingRevealed++;
-   state.buildings[key]={time:now,near:near,block:build.block.id,id:build.id,slot:slot,seenEpoch:state.buildingEpoch,fogHidden:false,
+   state.buildings[key]={time:now,near:near,block:build.block.id,id:build.id,slot:slot,seenEpoch:state.buildingEpoch,fogHidden:false,outsideInterest:false,
     reactorActive:state.reactorPriority?critical:false};
   }
   function flush(){
    if(count===0)return;
-   if(detailed){
-    var t=java.lang.System.nanoTime(),data=buffer.stream.toByteArray();copyNs+=java.lang.System.nanoTime()-t;
-    t=java.lang.System.nanoTime();
-    try{Packages.mindustry.gen.Call.blockSnapshot(receiver.con,count,data);}
-    finally{sendNs+=java.lang.System.nanoTime()-t;}
-   }else Packages.mindustry.gen.Call.blockSnapshot(receiver.con,count,buffer.stream.toByteArray());
+   var t=java.lang.System.nanoTime(),data=buffer.stream.toByteArray(),sendCount=count;
+   if(detailed)copyNs+=java.lang.System.nanoTime()-t;
+   var dedup=!!policy.buildingDedupEnabled&&observations.length===count;
+   if(dedup){
+    var kept=[],skipped=0,skippedBytes=0;
+    for(var oi=0;oi<observations.length;oi++){
+     var observation=observations[oi];
+     var skip=policy.observeBuildingRecord(state,observation.key,observation.build,data,
+      observation.start,observation.end,now,observation.force);
+     if(skip){skipped++;skippedBytes+=observation.end-observation.start;}
+     else kept.push(observation);
+    }
+    // An observer failure restores the entire original packet.
+    if(policy.buildingDedupEnabled&&skipped){
+     buffer.stream.reset();
+     for(var ki=0;ki<kept.length;ki++){
+      var part=kept[ki];buffer.stream.write(data,part.start,part.end-part.start);
+     }
+     data=buffer.stream.toByteArray();sendCount=kept.length;
+    }else{skipped=0;skippedBytes=0;}
+   }
+   try{
+    if(sendCount){t=java.lang.System.nanoTime();
+     try{Packages.mindustry.gen.Call.blockSnapshot(receiver.con,sendCount,data);}
+     finally{if(detailed)sendNs+=java.lang.System.nanoTime()-t;}
+    }
+   }catch(error){
+    // No successful send: discard optimistic byte baselines before fallback.
+    if(typeof policy.resetBuildingObservation==='function')policy.resetBuildingObservation();
+    throw error;
+   }
+   if(policy.buildingObservation&&sendCount){
+    policy.buildingObservation.sentRecords+=sendCount;
+    policy.buildingObservation.sentPayloadBytes+=data.length;
+    policy.buildingObservation.sentPackets++;
+   }
+   if(dedup){
+    policy.buildingObservation.skippedRecords+=skipped;
+    policy.buildingObservation.skippedBytes+=skippedBytes;
+    if(sendCount===0)policy.buildingObservation.skippedPackets++;
+   }else for(var oi=0;oi<observations.length;oi++){
+    var observation=observations[oi];
+    policy.observeBuildingRecord(state,observation.key,observation.build,data,observation.start,observation.end,now);
+   }
+   observations=[];
    count=0;buffer.stream.reset();
   }
   try{
@@ -392,9 +435,17 @@ INSTALL_JS = r"""
       continue;
      }
     }
+    var near=policy.inView(view,build);
+    if(policy.interestEnemyBuildingsInViewOnly&&!near&&build.team!=null&&String(build.team)!==teamKey){
+     if(previous){previous.seenEpoch=state.buildingEpoch;previous.outsideInterest=true;previous.near=false;}
+     policy.interestBuildingOutsideSkipped++;state.cursor=(index+1)%length;scanned++;
+     if(state.cursor===0)state.buildingEpoch++;
+     continue;
+    }
     var critical=policy.isLowHeatReactor(build);
     var priorityLast=!state.reactorPriority&&state.reactorState&&state.reactorState.buildings&&state.reactorState.buildings[key];
-    var priorityFresh=priorityLast&&!critical&&!priorityLast.fogHidden&&priorityLast.id===build.id&&
+    var priorityFresh=priorityLast&&state.reactorState.receiverTeamKey===teamKey&&!critical&&!priorityLast.fogHidden&&
+     !(previous&&(previous.fogHidden||previous.outsideInterest||(near&&!previous.near)))&&priorityLast.id===build.id&&
      priorityLast.block===build.block.id&&now-priorityLast.time<(policy.inView(view,build)?6000:12000);
     if((state.reactorPriority&&!critical&&(!previous||!previous.reactorActive))||(!state.reactorPriority&&critical)||priorityFresh){
      if(previous)previous.seenEpoch=state.buildingEpoch;
@@ -405,7 +456,6 @@ INSTALL_JS = r"""
     if(state.reactorPriority&&critical&&previous&&!previous.fogHidden&&previous.reactorActive)
      policy.interestReactorMaxAgeMs=Math.max(policy.interestReactorMaxAgeMs,now-previous.time);
     policy.interestStage='building-scan';
-    var near=policy.inView(view,build);
     if(previous&&previous.id!==build.id){delete state.buildings[key];
      state.buildingKeys[previous.slot]=null;state.buildingFree.push(previous.slot);state.buildingCount--;}
     else if(previous)previous.seenEpoch=state.buildingEpoch;
@@ -429,6 +479,10 @@ INSTALL_JS = r"""
       var encodeStart=detailed?java.lang.System.nanoTime():0;
       try{buffer.output.writeInt(build.pos());buffer.output.writeShort(build.block.id);build.writeSync(buffer.writes);}
       finally{if(detailed)encodeNs+=java.lang.System.nanoTime()-encodeStart;}
+      if(policy.buildingObservationEnabled&&typeof policy.observeBuildingRecord==='function')
+       observations.push({key:String(receiver.team())+':'+key,build:build,start:before,end:buffer.stream.size(),
+        force:!!state.reactorPriority||!previous||previous.fogHidden||previous.outsideInterest||previous.id!==build.id||
+         previous.block!==build.block.id||(near&&!previous.near)});
       total+=buffer.stream.size()-before;count++;records++;save(build,key,near);
       if(buffer.stream.size()>800)flush();
      }finally{serializeNs+=java.lang.System.nanoTime()-phase;}
@@ -519,7 +573,15 @@ INSTALL_JS = r"""
     policy.writeBuildings(receiver,null,state.reactorState,policy.interestReactors,now);
     policy.interestReactorRecords+=policy.interestBuildingRecords-beforeRecords;
    }
-   if(fullView?sendFullEntities:sendEntities){
+   var cadence=typeof policy.adaptiveCadence==='function'?policy.adaptiveCadence(receiver,now,fullView):null;
+   if(typeof policy.afkCadence==='function')cadence=policy.afkCadence(receiver,now)||cadence;
+   var entityDue=fullView?sendFullEntities:sendEntities;
+   if(cadence){
+    entityDue=now>=cadence.nextEntity;
+    // Dispatch opportunities include staggered building/reactor phases,
+    // avoiding rounding a requested 250ms cadence up to a 400ms global slot.
+   }
+   if(entityDue){
    var farBucket=null;
    if(policy.interestFarBucketsEnabled&&!fullView){
     if(state.farNextBucket===undefined)state.farNextBucket=0;
@@ -553,6 +615,10 @@ INSTALL_JS = r"""
    policy.interestEntityRecords+=selected.size;
    state.entityBatches=(state.entityBatches||0)+1;state.entityRecords=(state.entityRecords||0)+selected.size;
    state.lastEntityAt=now;
+   if(cadence){
+    cadence.lastEntity=now;
+    cadence.nextEntity+=cadence.interval*(Math.floor(Math.max(0,now-cadence.nextEntity)/cadence.interval)+1);
+   }
    if(farDue)state.lastFar=now;
    if(hidden.size>0)Packages.mindustry.gen.Call.hiddenSnapshot(con,hidden);
    if(con.localEntities.size>0)original.writeCustomEntitySnapshot(receiver,con.localEntities);
@@ -700,6 +766,8 @@ INSTALL_JS = r"""
    current.interestUnitMode='pending';
    current.interestBuildingEffectiveMode='pending';
    current.interestBuildingBuffer=null;
+   current.adaptiveClients={};current.adaptiveFeedbackAt=0;
+   if(typeof current.resetBuildingObservation==='function')current.resetBuildingObservation();
    current.interestPhaseOrigin=null;current.interestPhaseNext=null;
    current.interestSlowCount=0;
    current.interestReactors=null;current.interestReactorCount=0;
