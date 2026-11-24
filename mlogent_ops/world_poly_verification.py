@@ -42,9 +42,8 @@ INSTALL_JS = r"""
   if(now>=s.deadline){mlogentPolyPolicyRef.polyFail(player,s,'timeout');return;}
   if(option!==s.answer){mlogentPolyPolicyRef.polyFail(player,s,option<0?'closed':'wrong-answer');return;}
   s.mode='watch';s.answer=null;s.hits=[];s.graceUntil=now+mlogentPolyPolicyRef.polyGraceMs;mlogentPolyPolicyRef.polyStats.passed++;
-  // A successful human-interaction challenge also satisfies a pending AFK check.
-  var afk=mlogentPolyPolicyRef.afkStates&&mlogentPolyPolicyRef.afkStates['c'+player.con.hashCode()];
-  if(afk){afk.mode='active';afk.limited=false;afk.awaiting=false;afk.lastActivity=now;afk.reason='poly-verified';}
+  // A successful interaction also clears automatic AFK and its name badge.
+  if(typeof mlogentPolyPolicyRef.afkActivity==='function')mlogentPolyPolicyRef.afkActivity(player,'poly-verified');
   player.sendMessage(mlogentPolyRootRef._mlogentI18n.text(player,'poly.passed'));
  };
  mlogentPolyPolicyRef.polyObserve=function(action,now){

@@ -1,76 +1,73 @@
-"""Request-only AFK challenge, timeout, recovery and callback lifetime tests."""
+"""Automatic idle status, badge, chat/action recovery and callback lifetime."""
 import json
 from pathlib import Path
 import subprocess
 import sys
 import unittest
-
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from mlogent_ops.world_afk_policy import INSTALL_JS
 
-
 class AfkPolicyTests(unittest.TestCase):
-    def test_challenge_requests_timeout_recovery_and_reinstall(self):
-        script = r"""
+    def test_automatic_idle_badge_interactions_recovery_and_reinstall(self):
+        script=r'''
 const vm=require('node:vm'),assert=require('node:assert/strict');
-let now=10000,menuFail=false;const players=[],menus=[],filters=[],ticks=[],loads=[],sent=[];
-const p={interestEnabled:true,adaptiveClients:{},interestStates:{},resetBuildingState:s=>{s.reset=true;}};
-const player=id=>({con:{hashCode:()=>id,hasConnected:true,isConnected:()=>true},sendMessage:m=>sent.push(m)});
+let now=10000;const players=[],filters=[],ticks=[],events={},sent=[],removed=[];
+const p={interestEnabled:true,adaptiveClients:{},interestStates:{},resetBuildingState:s=>s.reset=true};
+const player=id=>({name:'player'+id,locale:'en',uuid:()=> 'uuid'+id,con:{hashCode:()=>id,hasConnected:true,isConnected:()=>true},sendMessage:m=>sent.push(m)});
 players.push(player(1),player(2));
-const ctx={_mcpSnapshotPolicy:p,JavaAdapter:function(type,o){return o;},
- java:{lang:{System:{currentTimeMillis:()=>now},String:{},Class:{forName:()=>0},reflect:{Array:{newInstance:(t,n)=>new Array(n)}}}},
- Packages:{arc:{math:{Mathf:{random:(a,b)=>a}},util:{CommandHandler$CommandRunner:{}}},mindustry:{
-  net:{Administration$ActionFilter:{}},ui:{Menus$MenuListener:{},Menus:{registerMenu:m=>{menus.push(m);return menus.length-1;}}},
-  gen:{Call:{menu:(...a)=>{if(menuFail)throw Error('menu send failed');}}},
-  game:{EventType:{Trigger:{update:'update'},WorldLoadEvent:'load'}}}},
- Vars:{state:{rules:{pvp:false}},netServer:{admins:{addActionFilter:f=>filters.push(f)},clientCommands:{removeCommand(){},register(){}}}},
- Groups:{player:{size:()=>players.length,index:i=>players[i]}},Events:{run:(e,f)=>ticks.push(f),on:(e,f)=>loads.push(f)}};
+const ctx={_mcpSnapshotPolicy:p,JavaAdapter:function(type,object){return object;},
+java:{lang:{System:{currentTimeMillis:()=>now}}},
+Packages:{arc:{func:{Cons:{}},util:{CommandHandler$CommandRunner:{}}},mindustry:{net:{Administration$ActionFilter:{}},
+game:{EventType:{Trigger:{update:'update'},WorldLoadEvent:'load',PlayerChatEvent:'chat',PlayerLeave:'leave'}}}},
+Vars:{state:{rules:{pvp:false}},netServer:{admins:{actionFilters:{insert:(idx,f)=>filters.splice(idx,0,f)}},clientCommands:{removeCommand:name=>removed.push(name),register(){}}}},
+Groups:{player:{size:()=>players.length,index:i=>players[i]}},
+Events:{run:(e,f)=>ticks.push(f),on:(e,f)=>(events[e]??=[]).push(f)}};
 vm.createContext(ctx);const source=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
 vm.runInContext(source,ctx);p.afkEnabled=true;p.afkTick(now);
-ctx.p={packet:'KickCallPacket'};ctx.root={packet:'KickCallPacket'};
-assert.equal(p.afkStates.c1.mode,'active');
-now+=179000;
-// Periodic network/mining activity is explicitly not one of the tracked types.
-assert.equal(filters[0].allow({type:'mining',player:players[0]}),true);
-p.afkTick(now);assert.equal(p.afkStates.c1.mode,'active');
+ctx.p={packet:'unrelated'};ctx.root={packet:'unrelated'};
+assert.equal(p.afkStates.c1.mode,'active');assert.equal(p.afkModeVersion,2);
+now+=179000;filters[0].allow({type:'mining',player:players[0]});
 filters[0].allow({type:'placeBlock',player:players[1]});
-now+=1000;p.afkTick(now);assert.equal(p.afkStates.c1.mode,'pending');assert.equal(p.afkStates.c2.mode,'active');
-assert.equal(p.afkCadence(players[0],now),null); // 30-second answer grace
-filters[0].allow({type:'control',player:players[0]});
-assert.equal(p.afkStates.c1.mode,'pending');
-now+=30000;p.afkTick(now);assert.equal(p.afkStates.c1.mode,'afk');
+now+=1000;p.afkTick(now);
+assert.equal(p.afkStates.c1.mode,'afk');assert.equal(p.afkStates.c2.mode,'active');
+assert.equal(players[0].name,'[yellow][AFK][] player1');
+assert.equal(p.afkBadge(players[0]),'[yellow][AFK][] ');
 assert.equal(p.afkCadence(players[0],now).interval,1000);
 assert.equal(p.afkSupplementDue(players[0],now),true);now+=100;assert.equal(p.afkSupplementDue(players[0],now),false);
 assert.equal(p.afkSupplementDue(players[1],now),true);
-// A late confirmation restores normal sync without reopening the menu.
-p.adaptiveClients.c1={level:3};p.interestStates.c1={};
-menus[0].get(players[0],0);assert.equal(p.afkStates.c1.mode,'active');
-assert.equal(p.adaptiveClients.c1.level,0);assert.equal(p.interestStates.c1.reset,true);
-menus[0].get(players[0],1);assert.equal(p.afkStates.c1.mode,'active'); // stale response ignored
-now+=180000;p.afkTick(now);menus[0].get(players[0],1);assert.equal(p.afkStates.c1.mode,'afk');
-now+=5000;p.afkAsk(players[0],now);assert.equal(p.afkCadence(players[0],now).interval,1000);
-p.adaptiveClients.c1={level:3};p.interestStates.c1={};
-menus[0].get(players[0],0);
-assert.equal(p.afkStates.c1.mode,'active');assert.equal(p.afkCadence(players[0],now),null);
-assert.equal(p.adaptiveClients.c1.level,0);assert.equal(p.interestStates.c1.reset,true);
-// Another player's answer cannot complete this player's challenge.
-now+=180000;p.afkTick(now);
-menus[0].get(players[1],-1);assert.equal(p.afkStates.c1.mode,'pending');
-menus[0].get(players[0],-1);assert.equal(p.afkStates.c1.reason,'closed');
-now+=5000;p.afkAsk(players[0],now);menus[0].get(players[0],99);assert.equal(p.afkStates.c1.mode,'pending');
-menus[0].get(players[0],0);assert.equal(p.afkStates.c1.mode,'active');
-// Menu delivery errors never newly penalize an active player.
-menus[0].get(players[1],99);p.afkStates.c2.mode='active';p.afkStates.c2.limited=false;
-menuFail=true;now+=5000;p.afkAsk(players[1],now);assert.equal(p.afkStates.c2.mode,'active');
-menuFail=false;players.pop();p.afkTick(now);assert.equal(p.afkStates.c2,undefined);
-// World load, disable and PvP remove restrictions.
-loads[0]();assert.equal(Object.keys(p.afkStates).length,0);
-p.afkTick(now);ctx.Vars.state.rules.pvp=true;p.afkTick(now);assert.equal(Object.keys(p.afkStates).length,0);
-vm.runInContext(source,ctx);assert.equal(menus.length,1);assert.equal(filters.length,1);assert.equal(ticks.length,1);assert.equal(loads.length,1);
-"""
+const entered=sent.length;p.afkTick(now);assert.equal(sent.length,entered);
+// Chat restores the original name and flushes delivery state, without bypassing bandwidth.
+p.adaptiveClients.c1={level:3,lastEntity:123};p.interestStates.c1={reactorState:{}};
+events.chat[0].get({player:players[0],message:'anything'});
+assert.equal(p.afkStates.c1.mode,'active');assert.equal(players[0].name,'player1');
+assert.equal(p.adaptiveClients.c1.level,3);assert.equal(p.adaptiveClients.c1.nextEntity,0);
+assert.equal(p.interestStates.c1.reset,true);assert.equal(p.interestStates.c1.reactorState.reset,true);
+assert.equal(p.afkCadence(players[0],now),null);
+for(const type of ['placeBlock','breakBlock','configure','control','buildSelect','commandUnits','commandBuilding']){
+ now+=180000;p.afkTick(now);assert.equal(p.afkStates.c1.mode,'afk');
+ assert.equal(filters[0].allow({type,player:players[0]}),true);
+ assert.equal(p.afkStates.c1.mode,'active');assert.equal(p.afkBadge(players[0]),'');
+}
+// A permission denial after the observer still counts as attempted interaction.
+now+=180000;p.afkTick(now);filters.push({allow:()=>false});
+assert.equal(filters.every(f=>f.allow({type:'placeBlock',player:players[0]})),false);
+assert.equal(p.afkStates.c1.mode,'active');filters.pop();
+// Commands also count as chat; unrelated players cannot clear each other's state.
+now+=180000;p.afkTick(now);events.chat[0].get({player:players[1],message:'/help'});
+assert.equal(p.afkStates.c1.mode,'afk');assert.equal(p.afkStates.c2.mode,'active');
+events.chat[0].get({player:players[0],message:'/push question'});assert.equal(p.afkStates.c1.mode,'active');
+// Old modal callbacks do nothing, and reinstall creates no menu or duplicate listeners.
+now+=180000;p.afkTick(now);p.afkAnswer(players[0],0);assert.equal(p.afkStates.c1.mode,'afk');
+vm.runInContext(source,ctx);p.afkEnabled=true;
+assert.equal(filters.length,1);assert.equal(ticks.length,1);assert.equal(events.chat.length,1);assert.equal(events.load.length,1);
+assert.ok(removed.includes('afkverify'));
+events.leave[0].get({player:players[1]});assert.equal(p.afkStates.c2,undefined);assert.equal(players[1].name,'player2');
+events.load[0]();assert.equal(Object.keys(p.afkStates).length,0);assert.equal(players[0].name,'player1');
+p.afkTick(now);now+=180000;p.afkTick(now);p.afkEnabled=false;p.afkTick(now);
+assert.equal(Object.keys(p.afkStates).length,0);assert.equal(players[0].name,'player1');
+p.afkEnabled=true;ctx.Vars.state.rules.pvp=true;p.afkTick(now);assert.equal(Object.keys(p.afkStates).length,0);
+'''
         result=subprocess.run(['node','-e',script],input=json.dumps(INSTALL_JS),text=True,capture_output=True,timeout=15)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
-
-if __name__=='__main__':
-    unittest.main()
+if __name__=='__main__':unittest.main()
